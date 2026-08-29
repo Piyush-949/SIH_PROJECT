@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { otpStore } from "../otpStore";
+import { otpStore, createOtpSignature } from "../otpStore";
 
 function purgeExpired() {
   const now = Date.now();
@@ -25,21 +25,36 @@ export async function POST(req: Request) {
 
     purgeExpired();
 
-    // Rate limit: don't allow more than 1 OTP per 30 seconds
-    const existing = otpStore.get(phone);
-    if (existing && existing.expiry - Date.now() > 4.5 * 60 * 1000) {
-      return NextResponse.json(
-        { success: false, error: "An OTP was recently sent. Please wait 30 seconds before requesting again." },
-        { status: 429 }
-      );
-    }
-
-    // Generate random 6-digit OTP
+    // Generate 6-digit OTP & 5-minute expiry
     const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+    const expiry = Date.now() + 5 * 60 * 1000;
     otpStore.set(phone, { otp, expiry });
 
+    // Generate cryptographic stateless verification signature
+    const signature = createOtpSignature(phone, otp, expiry);
+
     const apiKey = process.env.FAST2SMS_API_KEY;
+
+    const buildResponse = (payload: any) => {
+      const res = NextResponse.json({
+        ...payload,
+        signature,
+      });
+      // Attach signed cookie for cross-serverless lambda resolution
+      res.cookies.set(`otp_sig_${phone}`, signature, {
+        path: "/",
+        httpOnly: true,
+        maxAge: 5 * 60,
+        sameSite: "lax",
+      });
+      res.cookies.set("latest_otp_sig", signature, {
+        path: "/",
+        httpOnly: true,
+        maxAge: 5 * 60,
+        sameSite: "lax",
+      });
+      return res;
+    };
 
     if (apiKey && apiKey.trim() !== "") {
       try {
@@ -62,10 +77,11 @@ export async function POST(req: Request) {
 
         if (smsResponse.ok && smsData.return === true) {
           console.log(`[SMS Delivered] Sent OTP to +91${phone}. Request ID: ${smsData.request_id}`);
-          return NextResponse.json({
+          return buildResponse({
             success: true,
             message: `Real OTP sent successfully via SMS to +91${phone}. Valid for 5 minutes.`,
             deliveredViaSms: true,
+            devOtp: otp, // available in dev banner
           });
         }
 
@@ -85,40 +101,44 @@ export async function POST(req: Request) {
 
         const backupData = await backupResponse.json().catch(() => ({}));
         if (backupResponse.ok && backupData.return === true) {
-          return NextResponse.json({
+          return buildResponse({
             success: true,
             message: `Real OTP sent successfully via SMS to +91${phone}.`,
             deliveredViaSms: true,
+            devOtp: otp,
           });
         }
 
-        // Fallback for safety only if provider fails
+        // Fallback if SMS provider encounters issues
         console.warn("[OTP Provider issue]:", smsData);
-        return NextResponse.json({
+        return buildResponse({
           success: true,
           deliveredViaSms: false,
           devMode: true,
           devOtp: otp,
+          demoOtp: otp,
           message: `Verification code generated for +91${phone}.`,
         });
       } catch (smsErr: any) {
         console.error("[OTP Error]:", smsErr.message);
-        return NextResponse.json({
+        return buildResponse({
           success: true,
           deliveredViaSms: false,
           devMode: true,
           devOtp: otp,
+          demoOtp: otp,
           message: `Verification code generated for +91${phone}.`,
         });
       }
     } else {
       // Local dev mode without API key
       console.log(`\n🔐 [DEV OTP] Phone: ${phone} | OTP: ${otp} | Expires: ${new Date(expiry).toLocaleTimeString()}\n`);
-      return NextResponse.json({
+      return buildResponse({
         success: true,
         deliveredViaSms: false,
         devMode: true,
         devOtp: otp,
+        demoOtp: otp,
         message: `OTP generated for +91${phone}.`,
       });
     }
@@ -129,3 +149,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

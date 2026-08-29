@@ -87,6 +87,7 @@ export default function StaffLoginPage() {
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [receivedOtp, setReceivedOtp] = useState<string | null>(null);
+  const [otpSignature, setOtpSignature] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +119,10 @@ export default function StaffLoginPage() {
         return;
       }
       setOtpSent(true);
-      setReceivedOtp(data.demoOtp || null);
+      setReceivedOtp(data.demoOtp || data.devOtp || null);
+      if (data.signature) {
+        setOtpSignature(data.signature);
+      }
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -136,7 +140,7 @@ export default function StaffLoginPage() {
     setLoading(true);
 
     const staffAccount = STAFF_CREDENTIALS.find(s => s.phone === phone.trim());
-    const res = await loginWithPhone(phone, otp);
+    const res = await loginWithPhone(phone, otp, otpSignature || undefined);
     setLoading(false);
 
     if (res.success) {

@@ -30,6 +30,7 @@ export default function LoginPage() {
   const [otpSent, setOtpSent] = useState<boolean>(false);
   const [devMode, setDevMode] = useState<boolean>(false);
   const [fallbackOtp, setFallbackOtp] = useState<string | null>(null);
+  const [otpSignature, setOtpSignature] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +56,10 @@ export default function LoginPage() {
       }
       setOtpSent(true);
       setDevMode(!!data.devMode);
-      setFallbackOtp(data.devOtp || null);
+      setFallbackOtp(data.devOtp || data.demoOtp || null);
+      if (data.signature) {
+        setOtpSignature(data.signature);
+      }
     } catch (err: any) {
       setError("Network error sending OTP. Please check your connection.");
     } finally {
@@ -72,7 +76,7 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const res = await loginWithPhone(phone, otp);
+    const res = await loginWithPhone(phone, otp, otpSignature || undefined);
     setLoading(false);
 
     if (res.success) {

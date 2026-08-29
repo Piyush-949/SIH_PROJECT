@@ -10,7 +10,7 @@ interface AuthContextType {
   role: Role | null;
   isAuthenticated: boolean;
   isLoaded: boolean;
-  loginWithPhone: (phone: string, otp: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithPhone: (phone: string, otp: string, signature?: string) => Promise<{ success: boolean; error?: string }>;
   loginAsDemoRole: (role: Role) => void;
   logout: () => void;
   updateKycProfile: (data: Partial<FarmerProfileSummary>) => Promise<boolean>;
@@ -180,12 +180,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Real phone + OTP login. Verifies against the server and stores the real JWT.
    */
-  const loginWithPhone = async (phone: string, otp: string) => {
+  const loginWithPhone = async (phone: string, otp: string, signature?: string) => {
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp }),
+        body: JSON.stringify({ phone, otp, signature }),
       });
 
       const data = await res.json();
