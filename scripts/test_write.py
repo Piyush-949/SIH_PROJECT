@@ -1,0 +1,1 @@
+print('Python script written via base64 runs perfectly!')

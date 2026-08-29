@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "20"
+  DATABASE_URL = "file:./dev.db"
+  NPM_FLAGS = "--no-audit --no-fund"
