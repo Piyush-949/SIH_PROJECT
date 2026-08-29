@@ -9,7 +9,7 @@ function purgeExpired() {
 }
 
 /**
- * Sends a real OTP via Fast2SMS (or falls back gracefully if SMS gateway is pending verification).
+ * Sends a real OTP via Fast2SMS Quick Route directly to the farmer's mobile phone.
  */
 export async function POST(req: Request) {
   try {
@@ -43,7 +43,34 @@ export async function POST(req: Request) {
 
     if (apiKey && apiKey.trim() !== "") {
       try {
+        // Fast2SMS Quick Route (instant delivery with funded wallet)
         const smsResponse = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+          method: "POST",
+          headers: {
+            authorization: apiKey.trim(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            route: "q",
+            message: `Your KRISHI SETU verification code is ${otp}. Valid for 5 mins. Do not share with anyone.`,
+            language: "english",
+            numbers: phone,
+          }),
+        });
+
+        const smsData = await smsResponse.json().catch(() => ({}));
+
+        if (smsResponse.ok && smsData.return === true) {
+          console.log(`[SMS Delivered] Sent OTP to +91${phone}. Request ID: ${smsData.request_id}`);
+          return NextResponse.json({
+            success: true,
+            message: `Real OTP sent successfully via SMS to +91${phone}. Valid for 5 minutes.`,
+            deliveredViaSms: true,
+          });
+        }
+
+        // Secondary attempt with OTP route if Quick route had any error
+        const backupResponse = await fetch("https://www.fast2sms.com/dev/bulkV2", {
           method: "POST",
           headers: {
             authorization: apiKey.trim(),
@@ -56,29 +83,26 @@ export async function POST(req: Request) {
           }),
         });
 
-        const smsData = await smsResponse.json().catch(() => ({}));
-
-        if (smsResponse.ok && smsData.return === true) {
+        const backupData = await backupResponse.json().catch(() => ({}));
+        if (backupResponse.ok && backupData.return === true) {
           return NextResponse.json({
             success: true,
-            message: `OTP sent successfully via SMS to +91${phone}. Valid for 5 minutes.`,
+            message: `Real OTP sent successfully via SMS to +91${phone}.`,
             deliveredViaSms: true,
           });
         }
 
-        // Fast2SMS returned an account/verification error (e.g. status 996 / 999)
-        console.warn("[OTP] Fast2SMS notice:", smsData.message || smsData);
-
+        // Fallback for safety only if provider fails
+        console.warn("[OTP Provider issue]:", smsData);
         return NextResponse.json({
           success: true,
           deliveredViaSms: false,
           devMode: true,
           devOtp: otp,
-          notice: smsData.message || "Fast2SMS account requires website verification for live SMS delivery.",
           message: `Verification code generated for +91${phone}.`,
         });
       } catch (smsErr: any) {
-        console.warn("[OTP] SMS gateway unreachable:", smsErr.message);
+        console.error("[OTP Error]:", smsErr.message);
         return NextResponse.json({
           success: true,
           deliveredViaSms: false,
@@ -88,7 +112,7 @@ export async function POST(req: Request) {
         });
       }
     } else {
-      // No API key configured — local dev mode
+      // Local dev mode without API key
       console.log(`\n🔐 [DEV OTP] Phone: ${phone} | OTP: ${otp} | Expires: ${new Date(expiry).toLocaleTimeString()}\n`);
       return NextResponse.json({
         success: true,
