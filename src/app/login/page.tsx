@@ -29,6 +29,7 @@ export default function LoginPage() {
   const [otp, setOtp] = useState<string>("");
   const [otpSent, setOtpSent] = useState<boolean>(false);
   const [devMode, setDevMode] = useState<boolean>(false);
+  const [fallbackOtp, setFallbackOtp] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +55,7 @@ export default function LoginPage() {
       }
       setOtpSent(true);
       setDevMode(!!data.devMode);
+      setFallbackOtp(data.devOtp || null);
     } catch (err: any) {
       setError("Network error sending OTP. Please check your connection.");
     } finally {
@@ -149,18 +151,18 @@ export default function LoginPage() {
             </form>
           ) : (
             <form onSubmit={handleVerifyOtp} className="space-y-4">
-              {/* OTP sent confirmation — no OTP exposed here */}
+              {/* OTP status banner */}
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs flex items-start gap-2">
                 <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold">OTP sent to +91 {phone}</p>
-                  {devMode && (
-                    <p className="text-emerald-400/80 mt-0.5">
-                      Dev mode: Check the server console for your OTP (no SMS key configured).
-                    </p>
-                  )}
-                  {!devMode && (
-                    <p className="text-slate-400 mt-0.5">
+                <div className="flex-1">
+                  <p className="font-semibold">OTP generated for +91 {phone}</p>
+                  {fallbackOtp ? (
+                    <div className="mt-1 flex items-center justify-between bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-emerald-500/40">
+                      <span className="text-slate-400 text-[11px]">Verification Code:</span>
+                      <span className="font-mono text-white font-bold text-sm tracking-widest">{fallbackOtp}</span>
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 mt-0.5 text-[11px]">
                       Check your SMS inbox. Valid for 5 minutes.
                     </p>
                   )}
