@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -18,7 +18,12 @@ import {
   Globe,
   Sparkles,
   HelpCircle,
+  MapPin,
+  Search,
+  Loader2,
+  Check,
 } from "lucide-react";
+import { INDIAN_STATES } from "@/lib/data/indianStates";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -45,6 +50,115 @@ export default function OnboardingPage() {
   const [accountNumber, setAccountNumber] = useState<string>("");
   const [ifscCode, setIfscCode] = useState<string>("");
   const [prefLang, setPrefLang] = useState<string>("en");
+
+  // Location Autocomplete State
+  const [villageSuggestions, setVillageSuggestions] = useState<any[]>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState<boolean>(false);
+  const [showVillageDropdown, setShowVillageDropdown] = useState<boolean>(false);
+  const [pinLookupLoading, setPinLookupLoading] = useState<boolean>(false);
+  const [pinOffices, setPinOffices] = useState<string[]>([]);
+  const [autoFillBadge, setAutoFillBadge] = useState<string | null>(null);
+
+  const villageDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        villageDropdownRef.current &&
+        !villageDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowVillageDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Handle typing in village input
+  const handleVillageChange = (val: string) => {
+    setVillage(val);
+    if (val.trim().length >= 2) {
+      setIsSearchingLocation(true);
+      setShowVillageDropdown(true);
+    } else {
+      setVillageSuggestions([]);
+      setShowVillageDropdown(false);
+      setIsSearchingLocation(false);
+    }
+  };
+
+  // Debounced search for village / city
+  useEffect(() => {
+    if (!village || village.trim().length < 2 || !showVillageDropdown) return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/location/lookup?q=${encodeURIComponent(village.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results && Array.isArray(data.results)) {
+            setVillageSuggestions(data.results);
+          }
+        }
+      } catch (err) {
+        console.warn("[Location Search] error:", err);
+      } finally {
+        setIsSearchingLocation(false);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [village, showVillageDropdown]);
+
+  // When farmer selects a location suggestion from dropdown
+  const handleSelectLocation = (loc: {
+    village: string;
+    district: string;
+    state: string;
+    pincode: string;
+  }) => {
+    setVillage(loc.village);
+    setDistrict(loc.district);
+    setState(loc.state);
+    setPincode(loc.pincode);
+    setVillageSuggestions([]);
+    setShowVillageDropdown(false);
+    setAutoFillBadge(`Auto-populated: ${loc.village}, ${loc.district}, ${loc.state} (${loc.pincode})`);
+    setTimeout(() => setAutoFillBadge(null), 6000);
+  };
+
+  // Reverse PIN Code Lookup
+  const handlePincodeChange = async (val: string) => {
+    const cleanPin = val.replace(/\D/g, "").slice(0, 6);
+    setPincode(cleanPin);
+
+    if (cleanPin.length === 6) {
+      setPinLookupLoading(true);
+      try {
+        const res = await fetch(`/api/location/lookup?pincode=${cleanPin}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.district) {
+            setDistrict(data.district);
+            if (data.state) setState(data.state);
+            if (data.villages && data.villages.length > 0) {
+              setPinOffices(data.villages);
+              if (!village || village === "Rampur" || village === "Karnal Rural") {
+                setVillage(data.villages[0]);
+              }
+            }
+            setAutoFillBadge(`Location verified from PIN ${cleanPin}: ${data.district}, ${data.state}`);
+            setTimeout(() => setAutoFillBadge(null), 6000);
+          }
+        }
+      } catch (err) {
+        console.warn("[PIN Lookup] error:", err);
+      } finally {
+        setPinLookupLoading(false);
+      }
+    } else {
+      setPinOffices([]);
+    }
+  };
 
   const handleVerifyGov = async () => {
     setGovError(null);
@@ -304,6 +418,14 @@ export default function OnboardingPage() {
                 </p>
               </div>
 
+              {/* Auto-filled notification badge */}
+              {autoFillBadge && (
+                <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2.5 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="font-semibold text-white text-[11px]">{autoFillBadge}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
@@ -313,7 +435,8 @@ export default function OnboardingPage() {
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs"
+                    placeholder="Enter full name"
+                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-hidden focus:border-emerald-500"
                     required
                   />
                 </div>
@@ -327,24 +450,74 @@ export default function OnboardingPage() {
                     step="0.1"
                     value={landAcres}
                     onChange={(e) => setLandAcres(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono"
+                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono focus:outline-hidden focus:border-emerald-500"
                     required
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    {t.kyc.villageLabel}
-                  </label>
-                  <input
-                    type="text"
-                    value={village}
-                    onChange={(e) => setVillage(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs"
-                    required
-                  />
+                {/* Village / City with Autocomplete Dropdown */}
+                <div className="relative" ref={villageDropdownRef}>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs font-semibold text-slate-300">
+                      {t.kyc.villageLabel} / City
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-medium">
+                      Type to auto-search list
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={village}
+                      onChange={(e) => handleVillageChange(e.target.value)}
+                      onFocus={() => {
+                        if (village.trim().length >= 2) setShowVillageDropdown(true);
+                      }}
+                      placeholder="e.g. Cuttack, Karnal, Rampur..."
+                      className="w-full pl-8 pr-8 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-hidden focus:border-emerald-500"
+                      required
+                    />
+                    <MapPin className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                    {isSearchingLocation && (
+                      <Loader2 className="w-3.5 h-3.5 text-emerald-400 absolute right-3 top-3 animate-spin pointer-events-none" />
+                    )}
+                  </div>
+
+                  {/* Autocomplete Dropdown List */}
+                  {showVillageDropdown && (villageSuggestions.length > 0 || isSearchingLocation) && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 bg-slate-900 border border-emerald-500/40 rounded-xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-slate-800">
+                      {villageSuggestions.length > 0 ? (
+                        villageSuggestions.map((item, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleSelectLocation(item)}
+                            className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-950/70 hover:text-emerald-300 transition flex items-start justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-start gap-2 min-w-0">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                              <div className="truncate">
+                                <span className="font-bold text-white block truncate">{item.village}</span>
+                                <span className="text-[11px] text-slate-400 truncate block">
+                                  {item.district}, {item.state}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-emerald-400 shrink-0 border border-slate-700">
+                              {item.pincode}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="p-3 text-center text-xs text-slate-400">
+                          Searching locations in India...
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
+                {/* District */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     {t.kyc.districtLabel}
@@ -353,35 +526,81 @@ export default function OnboardingPage() {
                     type="text"
                     value={district}
                     onChange={(e) => setDistrict(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs"
+                    placeholder="e.g. Cuttack, Karnal"
+                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-hidden focus:border-emerald-500"
                     required
                   />
                 </div>
 
+                {/* State with quick Select list */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     {t.kyc.stateLabel}
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={state}
                     onChange={(e) => setState(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs"
+                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-hidden focus:border-emerald-500"
                     required
-                  />
+                  >
+                    <option value="">Select State / UT</option>
+                    {INDIAN_STATES.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
+                {/* PIN Code with Auto-lookup */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    {t.kyc.pincodeLabel}
-                  </label>
-                  <input
-                    type="text"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono"
-                    required
-                  />
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs font-semibold text-slate-300">
+                      {t.kyc.pincodeLabel} (6 Digits)
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Entering PIN auto-fills District & State
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={pincode}
+                      onChange={(e) => handlePincodeChange(e.target.value)}
+                      placeholder="e.g. 753001 or 132001"
+                      className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono tracking-widest focus:outline-hidden focus:border-emerald-500"
+                      required
+                    />
+                    {pinLookupLoading && (
+                      <Loader2 className="w-3.5 h-3.5 text-emerald-400 absolute right-3 top-3 animate-spin pointer-events-none" />
+                    )}
+                  </div>
+
+                  {/* Village pills if found by PIN code */}
+                  {pinOffices.length > 1 && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5">
+                      <span className="text-[10px] text-slate-400 block font-semibold">
+                        Post Offices in this PIN Code (click to select):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                        {pinOffices.map((po, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setVillage(po)}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-medium transition ${
+                              village === po
+                                ? "bg-emerald-600 text-white font-bold"
+                                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                            }`}
+                          >
+                            {po}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
