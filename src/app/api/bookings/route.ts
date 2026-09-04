@@ -9,7 +9,12 @@ export async function GET(req: Request) {
     const status = searchParams.get("status");
 
     const whereClause: any = {};
-    if (farmerId) whereClause.farmerId = farmerId;
+    if (farmerId) {
+      whereClause.OR = [
+        { farmerId: farmerId },
+        { farmer: { userId: farmerId } },
+      ];
+    }
     if (centreId) whereClause.centreId = centreId;
     if (status) whereClause.status = status;
 

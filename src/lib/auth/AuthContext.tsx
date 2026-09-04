@@ -13,7 +13,7 @@ interface AuthContextType {
   loginWithPhone: (phone: string, otp: string, signature?: string) => Promise<{ success: boolean; error?: string }>;
   loginAsDemoRole: (role: Role) => void;
   logout: () => void;
-  updateKycProfile: (data: Partial<FarmerProfileSummary>) => Promise<boolean>;
+  updateKycProfile: (data: Partial<FarmerProfileSummary>) => Promise<{ success: boolean; error?: string }>;
   activeDemoAccount: DemoUser | null;
 }
 
@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthContextType>({
   loginWithPhone: async () => ({ success: true }),
   loginAsDemoRole: () => {},
   logout: () => {},
-  updateKycProfile: async () => true,
+  updateKycProfile: async () => ({ success: true }),
   activeDemoAccount: null,
 });
 
@@ -210,8 +210,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
 
-      // If farmer, fetch their profile from the DB
-      if (session.role === "FARMER") {
+      // If server returned farmer profile directly, hydrate immediately
+      if (data.profile) {
+        const profile: FarmerProfileSummary = {
+          id: data.profile.id,
+          userId: session.id,
+          aadhaarNumber: data.profile.aadhaarNumber || "",
+          kisanId: data.profile.kisanId,
+          village: data.profile.village,
+          district: data.profile.district,
+          state: data.profile.state,
+          pincode: data.profile.pincode || data.profile.pinCode || "",
+          bankAccountNumber: data.profile.bankAccountNumber || "",
+          ifscCode: data.profile.ifscCode || "",
+          bankName: data.profile.bankName || "",
+          landAreaAcres: data.profile.landAreaAcres || 5.0,
+          kycStatus: data.profile.kycStatus || "PENDING",
+        };
+        setFarmerProfile(profile);
+        try {
+          localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+        } catch {}
+      } else if (session.role === "FARMER") {
+        // Fallback: fetch profile from /api/auth/me
         try {
           const profileRes = await fetch("/api/auth/me", {
             headers: { Authorization: `Bearer ${data.token}` },
@@ -227,19 +248,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 village: profileData.profile.village,
                 district: profileData.profile.district,
                 state: profileData.profile.state,
-                pincode: profileData.profile.pincode,
-                bankAccountNumber: "",
-                ifscCode: "",
+                pincode: profileData.profile.pincode || profileData.profile.pinCode || "",
+                bankAccountNumber: profileData.profile.bankAccountNumber || "",
+                ifscCode: profileData.profile.ifscCode || "",
                 bankName: profileData.profile.bankName || "",
                 landAreaAcres: profileData.profile.landAreaAcres || 5.0,
-                kycStatus: profileData.profile.kycStatus,
+                kycStatus: profileData.profile.kycStatus || "PENDING",
               };
               setFarmerProfile(profile);
               try {
                 localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
               } catch {}
             } else {
-              // No profile yet — farmer needs to complete KYC
               setFarmerProfile(null);
               try {
                 localStorage.removeItem(PROFILE_STORAGE_KEY);
@@ -247,7 +267,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } catch {
-          // Profile fetch failed — farmer will need to complete KYC
           setFarmerProfile(null);
         }
       } else {
@@ -273,7 +292,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
-  const updateKycProfile = async (data: Partial<FarmerProfileSummary>) => {
+  const updateKycProfile = async (
+    data: Partial<FarmerProfileSummary>
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const token = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
 
@@ -285,6 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         body: JSON.stringify({
           userId: user?.id,
+          phone: user?.phone,
           name: data.name || user?.name,
           aadhaarNumber: data.aadhaarNumber,
           kisanId: data.kisanId,
@@ -292,6 +314,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           district: data.district,
           state: data.state,
           pinCode: data.pincode,
+          pincode: data.pincode,
           bankName: data.bankName,
           accountNumber: data.bankAccountNumber,
           ifscCode: data.ifscCode,
@@ -299,26 +322,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        console.error("[Auth] KYC update failed:", errData.error);
-        return false;
+      const resData = await res.json().catch(() => ({}));
+
+      if (!res.ok || !resData.success) {
+        const errorMsg = resData.error || "KYC registration failed. Please check your details.";
+        console.error("[Auth] KYC update failed:", errorMsg);
+        return { success: false, error: errorMsg };
       }
 
-      const resData = await res.json();
       const profileData = resData.profile;
 
       const updated: FarmerProfileSummary = {
         id: profileData?.id || farmerProfile?.id || `fp_${Date.now()}`,
-        userId: user?.id || "usr_farmer_active",
-        aadhaarNumber: data.aadhaarNumber || "",
+        userId: user?.id || profileData?.userId || "usr_farmer_active",
+        aadhaarNumber: data.aadhaarNumber || profileData?.aadhaarNumber || "",
         kisanId: data.kisanId || profileData?.kisanId || "",
         village: data.village || profileData?.village || "",
         district: data.district || profileData?.district || "",
         state: data.state || profileData?.state || "",
-        pincode: data.pincode || profileData?.pinCode || "",
-        bankAccountNumber: data.bankAccountNumber || "",
-        ifscCode: data.ifscCode || "",
+        pincode: data.pincode || profileData?.pinCode || profileData?.pincode || "",
+        bankAccountNumber: data.bankAccountNumber || profileData?.bankAccountNumber || "",
+        ifscCode: data.ifscCode || profileData?.ifscCode || "",
         bankName: data.bankName || profileData?.bankName || "",
         landAreaAcres: data.landAreaAcres || profileData?.landAreaAcres || 5.0,
         kycStatus: "VERIFIED",
@@ -328,10 +352,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updated));
       } catch {}
-      return true;
+
+      // Update name in user session as well
+      if (data.name && user) {
+        const updatedUser: UserSession = { ...user, name: data.name };
+        setUser(updatedUser);
+        try {
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser));
+        } catch {}
+      }
+
+      return { success: true };
     } catch (err: any) {
       console.error("[Auth] updateKycProfile error:", err.message);
-      return false;
+      return { success: false, error: err.message || "Network error. Please try again." };
     }
   };
 

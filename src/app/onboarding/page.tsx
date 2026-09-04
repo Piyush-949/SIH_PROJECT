@@ -50,6 +50,64 @@ export default function OnboardingPage() {
   const [accountNumber, setAccountNumber] = useState<string>("");
   const [ifscCode, setIfscCode] = useState<string>("");
   const [prefLang, setPrefLang] = useState<string>("en");
+  const [isSubmittingKyc, setIsSubmittingKyc] = useState<boolean>(false);
+  const [kycSubmitError, setKycSubmitError] = useState<string | null>(null);
+  const [step3Error, setStep3Error] = useState<string | null>(null);
+
+  const getBankFromIfsc = (ifsc: string): string => {
+    const prefix = ifsc.slice(0, 4).toUpperCase();
+    const map: Record<string, string> = {
+      PUNB: "Punjab National Bank",
+      SBIN: "State Bank of India",
+      HDFC: "HDFC Bank",
+      ICIC: "ICICI Bank",
+      BARB: "Bank of Baroda",
+      CNRB: "Canara Bank",
+      UBIN: "Union Bank of India",
+      BKID: "Bank of India",
+      IOBA: "Indian Overseas Bank",
+      CBIN: "Central Bank of India",
+      IDIB: "Indian Bank",
+      MAHB: "Bank of Maharashtra",
+      PSIB: "Punjab & Sind Bank",
+      UCOB: "UCO Bank",
+      KKBK: "Kotak Mahindra Bank",
+      AXIS: "Axis Bank",
+      UTIB: "Axis Bank",
+      YESB: "Yes Bank",
+      INDB: "IndusInd Bank",
+    };
+    return map[prefix] || "";
+  };
+
+  const handleIfscChange = (val: string) => {
+    const clean = val.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 11);
+    setIfscCode(clean);
+    const detected = getBankFromIfsc(clean);
+    if (detected) {
+      setBankName(detected);
+    }
+  };
+
+  const handleProceedToReview = () => {
+    setStep3Error(null);
+    const cleanAcc = accountNumber.replace(/\s/g, "");
+    const cleanIfsc = ifscCode.trim().toUpperCase();
+
+    if (!cleanAcc || !/^\d{9,18}$/.test(cleanAcc)) {
+      setStep3Error("Please enter a valid 9 to 18-digit bank account number.");
+      return;
+    }
+    if (!cleanIfsc || cleanIfsc.length < 10) {
+      setStep3Error("Please enter a valid 11-character IFSC code (e.g. PUNB0278400 or SBIN0001234).");
+      return;
+    }
+    if (!bankName.trim()) {
+      const detected = getBankFromIfsc(cleanIfsc) || "Nationalised Bank";
+      setBankName(detected);
+    }
+    setStep(4);
+  };
 
   // Location Autocomplete State
   const [villageSuggestions, setVillageSuggestions] = useState<any[]>([]);
@@ -205,26 +263,53 @@ export default function OnboardingPage() {
 
 
   const handleComplete = async () => {
+    setKycSubmitError(null);
     if (!user) {
       alert("Please sign in with your mobile number first so your Aadhaar registration is linked to your account.");
       router.push("/login");
       return;
     }
-    const success = await updateKycProfile({
-      name: name.trim(),
-      aadhaarNumber: aadhaar.replace(/\D/g, ""),
-      kisanId: kisanId.trim(),
-      village: village.trim(),
-      district: district.trim(),
-      state: state.trim(),
-      pincode: pincode.trim(),
-      bankAccountNumber: accountNumber.trim(),
-      ifscCode: ifscCode.trim().toUpperCase(),
-      bankName: bankName.trim(),
-      landAreaAcres: Number(landAcres) || 5.0,
-    });
-    if (success) {
-      router.push("/farmer/dashboard");
+
+    const cleanAcc = accountNumber.replace(/\s/g, "");
+    const cleanIfsc = ifscCode.trim().toUpperCase();
+    const effectiveBank = bankName.trim() || getBankFromIfsc(cleanIfsc) || "Nationalised Bank";
+
+    if (!cleanAcc || !/^\d{9,18}$/.test(cleanAcc)) {
+      setKycSubmitError("Please enter a valid 9 to 18-digit bank account number.");
+      setStep(3);
+      return;
+    }
+    if (!cleanIfsc || cleanIfsc.length < 10) {
+      setKycSubmitError("Please enter a valid 11-character IFSC code (e.g. PUNB0278400 or SBIN0001234).");
+      setStep(3);
+      return;
+    }
+
+    setIsSubmittingKyc(true);
+    try {
+      const result = await updateKycProfile({
+        name: name.trim(),
+        aadhaarNumber: aadhaar.replace(/\D/g, ""),
+        kisanId: kisanId.trim(),
+        village: village.trim(),
+        district: district.trim(),
+        state: state.trim(),
+        pincode: pincode.trim(),
+        bankAccountNumber: cleanAcc,
+        ifscCode: cleanIfsc,
+        bankName: effectiveBank,
+        landAreaAcres: Number(landAcres) || 5.0,
+      });
+
+      if (result.success) {
+        router.push("/farmer/dashboard");
+      } else {
+        setKycSubmitError(result.error || "KYC registration failed. Please check your details.");
+      }
+    } catch (err: any) {
+      setKycSubmitError(err.message || "Network error submitting KYC. Please try again.");
+    } finally {
+      setIsSubmittingKyc(false);
     }
   };
 
@@ -638,43 +723,72 @@ export default function OnboardingPage() {
                 </p>
               </div>
 
+              {step3Error && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{step3Error}</span>
+                </div>
+              )}
+
               <div className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    {t.kyc.bankNameLabel}
-                  </label>
-                  <input
-                    type="text"
-                    value={bankName}
-                    onChange={(e) => setBankName(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    {t.kyc.accountLabel}
+                    Bank Account Number <span className="text-slate-500">(खाता संख्या)</span> *
                   </label>
                   <input
                     type="text"
                     value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono"
+                    placeholder="e.g. 2750001000875433"
+                    onChange={(e) => {
+                      setStep3Error(null);
+                      setAccountNumber(e.target.value.replace(/\D/g, ""));
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono tracking-wider focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                     required
                   />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Enter 9 to 18-digit bank account number for Aadhaar-linked DBT payouts.
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Bank IFSC Code <span className="text-slate-500">(आईएफएससी कोड)</span> *
+                    </label>
+                    {bankName && (
+                      <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3 h-3" /> {bankName}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={ifscCode}
+                    placeholder="e.g. PUNB0278400 or SBIN0001234"
+                    maxLength={11}
+                    onChange={(e) => {
+                      setStep3Error(null);
+                      handleIfscChange(e.target.value);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono uppercase tracking-wider focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    11-character code from your chequebook or passbook.
+                  </p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    {t.kyc.ifscLabel}
+                    Bank & Branch Name <span className="text-slate-500">(बैंक एवं शाखा)</span>
                   </label>
                   <input
                     type="text"
-                    value={ifscCode}
-                    onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
-                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono uppercase"
-                    required
+                    value={bankName}
+                    placeholder="e.g. Punjab National Bank - Main Branch"
+                    onChange={(e) => setBankName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
               </div>
@@ -690,8 +804,8 @@ export default function OnboardingPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setStep(4)}
-                  className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-2"
+                  onClick={handleProceedToReview}
+                  className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-950/40"
                 >
                   <span>Review & Complete</span>
                   <ArrowRight className="w-4 h-4" />
@@ -712,6 +826,16 @@ export default function OnboardingPage() {
                   Verify your details before completing KYC onboarding.
                 </p>
               </div>
+
+              {kycSubmitError && (
+                <div className="p-3.5 bg-rose-500/10 border border-rose-500/40 rounded-xl text-xs text-rose-300 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-rose-200">KYC Registration Notice</p>
+                    <p className="mt-0.5 text-rose-300/90">{kycSubmitError}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-slate-900 rounded-xl p-4 border border-slate-700 space-y-3 text-xs">
                 <div className="grid grid-cols-2 gap-2 border-b border-slate-800 pb-2.5">
@@ -739,11 +863,16 @@ export default function OnboardingPage() {
                 <div className="grid grid-cols-2 gap-2 border-b border-slate-800 pb-2.5">
                   <div>
                     <span className="text-slate-500 block">Location:</span>
-                    <span className="text-slate-300">{village}, {district}, {state}</span>
+                    <span className="text-slate-300">{village}, {district}, {state} (PIN: {pincode})</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Bank Account:</span>
-                    <span className="font-mono text-slate-300">{bankName} ({ifscCode})</span>
+                    <span className="text-slate-500 block">Bank Details:</span>
+                    <span className="font-mono text-slate-300">
+                      {bankName || getBankFromIfsc(ifscCode) || "Nationalised Bank"} ({ifscCode})
+                    </span>
+                    <span className="block text-emerald-400 font-mono text-[11px] mt-0.5">
+                      A/C: {accountNumber}
+                    </span>
                   </div>
                 </div>
 
@@ -779,19 +908,30 @@ export default function OnboardingPage() {
               <div className="flex justify-between pt-4">
                 <button
                   type="button"
+                  disabled={isSubmittingKyc}
                   onClick={() => setStep(3)}
-                  className="py-2.5 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition flex items-center gap-1.5"
+                  className="py-2.5 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Back</span>
                 </button>
                 <button
                   type="button"
+                  disabled={isSubmittingKyc}
                   onClick={handleComplete}
-                  className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-950/50"
+                  className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-60 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-950/50"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>{t.kyc.completeKyc}</span>
+                  {isSubmittingKyc ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Completing KYC & Registration...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>{t.kyc.completeKyc}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

@@ -106,18 +106,52 @@ export async function POST(req: Request) {
       };
     }
 
-    // Check KYC status
+    // Look up existing FarmerProfile from SQLite database
     let farmerProfile: any = null;
     try {
-      farmerProfile = user.role === "FARMER" && user.id && !user.id.startsWith("usr_")
-        ? await db.farmerProfile.findUnique({ where: { userId: user.id } })
-        : null;
-    } catch {
+      if (user?.id) {
+        farmerProfile = await db.farmerProfile.findUnique({
+          where: { userId: user.id },
+        });
+      }
+      // If not found by user.id directly, try matching by phone on User table
+      if (!farmerProfile && phone) {
+        const matchingUser = await db.user.findUnique({
+          where: { phone },
+          include: { farmerProfile: true },
+        });
+        if (matchingUser?.farmerProfile) {
+          farmerProfile = matchingUser.farmerProfile;
+        }
+      }
+    } catch (e: any) {
+      console.warn("[verify-otp] Could not fetch farmer profile:", e.message);
       farmerProfile = null;
     }
 
     const kycStatus = farmerProfile?.kycStatus || "PENDING";
     const token = createToken(user.id, user.role, user.phone);
+
+    const profileData = farmerProfile
+      ? {
+          id: farmerProfile.id,
+          userId: user.id,
+          name: user.name,
+          aadhaarNumber: farmerProfile.aadhaarNumber || "",
+          kisanId: farmerProfile.kisanId,
+          village: farmerProfile.village,
+          district: farmerProfile.district,
+          state: farmerProfile.state,
+          pincode: farmerProfile.pincode,
+          pinCode: farmerProfile.pincode,
+          bankName: farmerProfile.bankName,
+          bankAccountNumber: farmerProfile.bankAccountNumber,
+          ifscCode: farmerProfile.ifscCode,
+          landAreaAcres: farmerProfile.landAreaAcres,
+          kycStatus: farmerProfile.kycStatus,
+          kycVerifiedAt: farmerProfile.kycVerifiedAt?.toISOString() || null,
+        }
+      : null;
 
     const response = NextResponse.json({
       success: true,
@@ -129,6 +163,7 @@ export async function POST(req: Request) {
         kycStatus,
         createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : new Date().toISOString(),
       },
+      profile: profileData,
       token,
     });
 

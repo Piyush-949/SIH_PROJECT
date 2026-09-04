@@ -119,7 +119,17 @@ export default function LoginPage() {
 
     if (res.success) {
       const storedProfile = typeof window !== "undefined" ? localStorage.getItem("krishi_farmer_profile") : null;
+      let hasVerifiedProfile = false;
       if (storedProfile) {
+        try {
+          const parsed = JSON.parse(storedProfile);
+          if (parsed?.kycStatus === "VERIFIED" || parsed?.kisanId) {
+            hasVerifiedProfile = true;
+          }
+        } catch {}
+      }
+
+      if (hasVerifiedProfile) {
         router.push("/farmer/dashboard");
       } else {
         router.push("/onboarding");
