@@ -74,6 +74,9 @@ export default function BookSlotPage() {
 
   // Key agricultural hub presets for instant testing & fallback
   const LOCATION_PRESETS = [
+    { label: "Cuttack, Odisha", lat: 20.4625, lng: 85.8830 },
+    { label: "Bhubaneswar / Khordha, Odisha", lat: 20.2961, lng: 85.8245 },
+    { label: "Sambalpur / Bargarh, Odisha", lat: 21.3324, lng: 83.6198 },
     { label: "Karnal, Haryana", lat: 29.6857, lng: 76.9907 },
     { label: "Ludhiana, Punjab", lat: 30.9010, lng: 75.8573 },
     { label: "Khanna, Punjab", lat: 30.7067, lng: 76.2167 },
@@ -105,17 +108,53 @@ export default function BookSlotPage() {
       (err) => {
         console.warn("[BookSlot] Geolocation error:", err.message);
         setLocationError("GPS permission denied or timed out. You can choose your region below.");
-        // Default to first preset if no coordinates yet
+        // Default to registered profile location or Cuttack, Odisha
         if (!farmerLat) {
-          setFarmerLat(29.6857);
-          setFarmerLng(76.9907);
-          setFarmerLocationName("Karnal, Haryana (Default)");
+          const isOdisha =
+            farmerProfile?.state?.toLowerCase().includes("odisha") ||
+            farmerProfile?.district?.toLowerCase().includes("cuttak") ||
+            farmerProfile?.district?.toLowerCase().includes("cuttack") ||
+            farmerProfile?.district?.toLowerCase().includes("khordha");
+
+          if (isOdisha) {
+            setFarmerLat(20.4625);
+            setFarmerLng(85.8830);
+            setFarmerLocationName("Cuttack, Odisha (Profile Location)");
+          } else {
+            setFarmerLat(20.4625);
+            setFarmerLng(85.8830);
+            setFarmerLocationName("Cuttack, Odisha (Default)");
+          }
         }
         setLocationLoading(false);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
+
+  // Pre-seed location from authenticated farmer profile
+  useEffect(() => {
+    if (farmerProfile) {
+      const stateLower = (farmerProfile.state || "").toLowerCase();
+      const districtLower = (farmerProfile.district || "").toLowerCase();
+      const villageLower = (farmerProfile.village || "").toLowerCase();
+
+      if (
+        stateLower.includes("odisha") ||
+        districtLower.includes("cuttak") ||
+        districtLower.includes("cuttack") ||
+        districtLower.includes("khordha") ||
+        villageLower.includes("cuttak") ||
+        villageLower.includes("cuttack")
+      ) {
+        setFarmerLat(20.4625);
+        setFarmerLng(85.8830);
+        setFarmerLocationName(
+          `${farmerProfile.village ? `${farmerProfile.village}, ` : ""}${farmerProfile.district || "Cuttack"}, Odisha`
+        );
+      }
+    }
+  }, [farmerProfile]);
 
   const handleSelectPreset = (preset: typeof LOCATION_PRESETS[0]) => {
     setFarmerLat(preset.lat);

@@ -84,9 +84,18 @@ export function scoreProcurementCentre(input: CentreScoringInput): Recommendatio
     congestionStatus = "YELLOW";
   }
 
-  // Factor 1: Distance Penalty (weight: 25) - normalized against 50km
-  const normDistance = Math.min(input.distanceKm / 50, 1.0);
-  const distancePenalty = normDistance * 25;
+  // Factor 1: Distance Penalty (weight: 35) — strictly penalizes long-haul transport
+  let distancePenalty = 0;
+  if (input.distanceKm <= 25) {
+    distancePenalty = (input.distanceKm / 25) * 8;
+  } else if (input.distanceKm <= 60) {
+    distancePenalty = 8 + ((input.distanceKm - 25) / 35) * 10;
+  } else if (input.distanceKm <= 120) {
+    distancePenalty = 18 + ((input.distanceKm - 60) / 60) * 14;
+  } else {
+    // Over 120km away (inter-district/inter-state), apply heavy hauling penalty
+    distancePenalty = 32 + Math.min(45, ((input.distanceKm - 120) / 200) * 45);
+  }
 
   // Factor 2: Queue Length Penalty (weight: 20) - normalized against 30 waiting farmers
   const normQueue = Math.min(input.waitingQueueCount / 30, 1.0);
@@ -194,7 +203,14 @@ export function scoreProcurementCentre(input: CentreScoringInput): Recommendatio
  */
 export function rankCentres(centres: CentreScoringInput[]): RecommendationResult[] {
   const results = centres.map(scoreProcurementCentre);
-  results.sort((a, b) => b.score - a.score);
+  results.sort((a, b) => {
+    // If one centre is local (<= 100km) and another is far (> 150km), local centre always wins
+    const aDist = a.distanceKm ?? 999;
+    const bDist = b.distanceKm ?? 999;
+    if (aDist <= 100 && bDist > 150) return -1;
+    if (bDist <= 100 && aDist > 150) return 1;
+    return b.score - a.score;
+  });
 
   if (results.length > 0 && results[0].score > 0) {
     results[0].primaryRecommendation = true;
