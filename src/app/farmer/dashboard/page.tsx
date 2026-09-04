@@ -112,6 +112,28 @@ export default function FarmerDashboard() {
         </div>
       </div>
 
+      {/* KYC Alert Banner if Profile is Pending */}
+      {(!farmerProfile || farmerProfile.kycStatus === "PENDING") && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white shadow-xs">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-xs font-bold text-amber-900">Aadhaar & Kisan ID Verification Required</h4>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                Complete your 1-minute government land registry check to activate automated MSP Direct Benefit Transfer (DBT) and slot booking.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/onboarding"
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg transition whitespace-nowrap self-start sm:self-center flex items-center gap-1.5 shadow-xs"
+          >
+            <span>Complete KYC Now</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
       {/* 2. Weather & MSP Ticker */}
       <div className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2 font-bold text-slate-700">

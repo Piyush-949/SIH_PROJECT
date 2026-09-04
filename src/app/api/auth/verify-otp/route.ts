@@ -13,43 +13,44 @@ function purgeExpired() {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const phone = (body?.phone || body?.mobile || "").trim();
-    const otp = (body?.otp || "").trim();
+    const rawPhone = (body?.phone || body?.mobile || "").toString();
+    const phone = rawPhone.replace(/\D/g, "").slice(-10);
+    const otp = (body?.otp || "").toString().replace(/\D/g, "").trim();
     const role = (body?.role || "FARMER").toUpperCase();
 
     if (!/^\d{10}$/.test(phone)) {
       return NextResponse.json(
-        { success: false, error: "Invalid phone number format" },
+        { success: false, error: "Please enter a valid 10-digit Indian phone number" },
         { status: 400 }
       );
     }
 
     if (!otp || otp.length !== 6) {
       return NextResponse.json(
-        { success: false, error: "OTP must be 6 digits" },
+        { success: false, error: "Verification code must be exactly 6 digits" },
         { status: 400 }
       );
     }
 
     purgeExpired();
 
-    // 1. Fast demo / test bypass codes
+    // 1. Universal demo / emergency testing bypass codes (for DND phones or sandbox evaluation)
     const isDemoBypass =
       otp === "999999" ||
       otp === "123456" ||
       otp === "000000" ||
       ["9876543210", "9876543220", "9876543230", "9876543240", "9876543250", "9876543260"].includes(phone);
 
-    // 2. In-memory OTP verification (for local server)
+    // 2. Global in-memory OTP store verification
     const stored = otpStore.get(phone);
-    const isMemoryValid = stored && stored.otp === otp && stored.expiry > Date.now();
+    const isMemoryValid = Boolean(stored && stored.otp === otp && stored.expiry > Date.now());
 
-    // 3. Cryptographic stateless HMAC signature verification (for Vercel serverless lambdas)
+    // 3. Cryptographic stateless HMAC signature verification (for cross-lambda verification)
     const cookieHeader = req.headers.get("cookie") || "";
     const cookies = Object.fromEntries(
       cookieHeader.split(";").map((c) => {
         const [k, ...v] = c.trim().split("=");
-        return [k, decodeURIComponent(v.join("="))];
+        return [k, decodeURIComponent((v || []).join("="))];
       })
     );
     const signature =
@@ -63,7 +64,10 @@ export async function POST(req: Request) {
 
     if (!isValidOtp) {
       return NextResponse.json(
-        { success: false, error: "Invalid or expired OTP. Please request a new OTP." },
+        {
+          success: false,
+          error: "Invalid or expired OTP. Please enter the code sent to your phone or click resend.",
+        },
         { status: 401 }
       );
     }

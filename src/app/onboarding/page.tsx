@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useTranslation } from "@/lib/i18n";
@@ -21,7 +22,7 @@ import {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { updateKycProfile, loginAsDemoRole } = useAuth();
+  const { user, updateKycProfile, loginAsDemoRole } = useAuth();
   const { t, isHindi } = useTranslation();
 
   const [step, setStep] = useState<number>(1);
@@ -45,8 +46,6 @@ export default function OnboardingPage() {
   const [ifscCode, setIfscCode] = useState<string>("");
   const [prefLang, setPrefLang] = useState<string>("en");
 
-  // No pre-filled sample records — farmers must enter their own real Aadhaar and Kisan ID
-
   const handleVerifyGov = async () => {
     setGovError(null);
     const cleanAadhaar = aadhaar.replace(/\D/g, "");
@@ -62,7 +61,7 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           aadhaarNumber: cleanAadhaar,
-          kisanId: kisanId.trim() || `KID-IN-2026-${cleanAadhaar.slice(-4)}`,
+          kisanId: kisanId.trim() || undefined,
         }),
       });
 
@@ -75,6 +74,7 @@ export default function OnboardingPage() {
 
       setIsGovVerified(true);
       if (data.record) {
+        if (data.record.kisanId) setKisanId(data.record.kisanId);
         if (data.record.fullName) setName(data.record.fullName);
         if (data.record.village) setVillage(data.record.village);
         if (data.record.district) setDistrict(data.record.district);
@@ -91,6 +91,11 @@ export default function OnboardingPage() {
 
 
   const handleComplete = async () => {
+    if (!user) {
+      alert("Please sign in with your mobile number first so your Aadhaar registration is linked to your account.");
+      router.push("/login");
+      return;
+    }
     const success = await updateKycProfile({
       name: name.trim(),
       aadhaarNumber: aadhaar.replace(/\D/g, ""),
@@ -124,6 +129,19 @@ export default function OnboardingPage() {
           <p className="text-xs text-slate-400 max-w-lg mx-auto">
             {t.kyc.subtitle}
           </p>
+          {user?.phone ? (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 text-xs mt-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Authenticated Mobile: <strong className="text-white font-mono">+91 {user.phone}</strong></span>
+            </div>
+          ) : (
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center justify-between gap-2 max-w-lg mx-auto mt-2">
+              <span>Sign in with mobile number to bind this registration.</span>
+              <Link href="/login" className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold hover:bg-amber-400 transition text-[10px] whitespace-nowrap">
+                Sign In
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Multi-Step Stepper Header */}
@@ -220,9 +238,14 @@ export default function OnboardingPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    {t.kyc.kisanIdLabel}
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs font-semibold text-slate-300">
+                      {t.kyc.kisanIdLabel}
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                      (Optional — auto-generated via AgriStack)
+                    </span>
+                  </div>
                   <input
                     type="text"
                     value={kisanId}
@@ -230,7 +253,7 @@ export default function OnboardingPage() {
                       setKisanId(e.target.value);
                       setIsGovVerified(false);
                     }}
-                    placeholder="KID-HR-2024-8891"
+                    placeholder="e.g. KID-HR-2026-001 (auto-assigned on verify)"
                     className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono uppercase focus:outline-hidden focus:border-emerald-500"
                   />
                 </div>
@@ -239,10 +262,10 @@ export default function OnboardingPage() {
                   <button
                     type="button"
                     onClick={handleVerifyGov}
-                    disabled={isVerifying || !aadhaar || !kisanId}
+                    disabled={isVerifying || aadhaar.replace(/\D/g, "").length !== 12}
                     className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs disabled:opacity-50"
                   >
-                    <span>{isVerifying ? "Verifying..." : t.kyc.verifyGov}</span>
+                    <span>{isVerifying ? "Cross-Verifying with AgriStack & UIDAI..." : t.kyc.verifyGov}</span>
                     <ShieldCheck className="w-4 h-4" />
                   </button>
                 </div>

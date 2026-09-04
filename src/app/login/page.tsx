@@ -28,15 +28,24 @@ export default function LoginPage() {
   const [phone, setPhone] = useState<string>("");
   const [otp, setOtp] = useState<string>("");
   const [otpSent, setOtpSent] = useState<boolean>(false);
-  const [devMode, setDevMode] = useState<boolean>(false);
-  const [fallbackOtp, setFallbackOtp] = useState<string | null>(null);
   const [otpSignature, setOtpSignature] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Countdown timer for OTP resend
+  React.useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!/^\d{10}$/.test(phone.trim())) {
+    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+    if (!/^\d{10}$/.test(cleanPhone)) {
       setError("Please enter a valid 10-digit mobile number.");
       return;
     }
@@ -46,7 +55,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.trim() }),
+        body: JSON.stringify({ phone: cleanPhone }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -55,8 +64,7 @@ export default function LoginPage() {
         return;
       }
       setOtpSent(true);
-      setDevMode(!!data.devMode);
-      setFallbackOtp(data.devOtp || data.demoOtp || null);
+      setResendCooldown(30);
       if (data.signature) {
         setOtpSignature(data.signature);
       }
@@ -67,20 +75,55 @@ export default function LoginPage() {
     }
   };
 
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || loading) return;
+    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.error || "Failed to resend OTP.");
+        setLoading(false);
+        return;
+      }
+      setResendCooldown(30);
+      if (data.signature) {
+        setOtpSignature(data.signature);
+      }
+    } catch {
+      setError("Network error resending OTP.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otp || otp.length !== 6) {
+    const cleanOtp = otp.replace(/\D/g, "").trim();
+    if (!cleanOtp || cleanOtp.length !== 6) {
       setError("Please enter the 6-digit OTP code.");
       return;
     }
     setError(null);
     setLoading(true);
 
-    const res = await loginWithPhone(phone, otp, otpSignature || undefined);
+    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+    const res = await loginWithPhone(cleanPhone, cleanOtp, otpSignature || undefined);
     setLoading(false);
 
     if (res.success) {
-      router.push("/farmer/dashboard");
+      const storedProfile = typeof window !== "undefined" ? localStorage.getItem("krishi_farmer_profile") : null;
+      if (storedProfile) {
+        router.push("/farmer/dashboard");
+      } else {
+        router.push("/onboarding");
+      }
     } else {
       setError(res.error || "Invalid OTP. Please check your verification code.");
     }
@@ -155,21 +198,16 @@ export default function LoginPage() {
             </form>
           ) : (
             <form onSubmit={handleVerifyOtp} className="space-y-4">
-              {/* OTP status banner */}
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs flex items-start gap-2">
-                <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
+              {/* Secure OTP status banner - code is strictly hidden */}
+              <div className="p-3.5 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs flex items-start gap-3">
+                <ShieldCheck className="w-5 h-5 shrink-0 text-emerald-400 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-semibold">OTP generated for +91 {phone}</p>
-                  {fallbackOtp ? (
-                    <div className="mt-1 flex items-center justify-between bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-emerald-500/40">
-                      <span className="text-slate-400 text-[11px]">Verification Code:</span>
-                      <span className="font-mono text-white font-bold text-sm tracking-widest">{fallbackOtp}</span>
-                    </div>
-                  ) : (
-                    <p className="text-slate-400 mt-0.5 text-[11px]">
-                      Check your SMS inbox. Valid for 5 minutes.
-                    </p>
-                  )}
+                  <p className="font-bold text-white">Verification Code Dispatched</p>
+                  <p className="text-slate-300 mt-1 text-[11px] leading-relaxed">
+                    A 6-digit OTP has been sent via secure SMS to{" "}
+                    <span className="font-mono font-bold text-emerald-400">+91 {phone}</span>.
+                    Valid for 5 minutes.
+                  </p>
                 </div>
               </div>
 
@@ -183,7 +221,6 @@ export default function LoginPage() {
                     onClick={() => {
                       setOtpSent(false);
                       setOtp("");
-                      setDevMode(false);
                     }}
                     className="text-[11px] text-emerald-400 hover:underline"
                   >
@@ -198,7 +235,21 @@ export default function LoginPage() {
                   placeholder="• • • • • •"
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-center text-lg tracking-widest font-mono font-bold focus:outline-hidden focus:border-emerald-500 transition"
                   required
+                  autoFocus
                 />
+              </div>
+
+              {/* Resend OTP button with countdown */}
+              <div className="flex items-center justify-between text-xs px-1 text-slate-400">
+                <span>Didn&apos;t receive code?</span>
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={resendCooldown > 0 || loading}
+                  className="text-emerald-400 hover:text-emerald-300 font-semibold disabled:text-slate-600 disabled:cursor-not-allowed transition"
+                >
+                  {resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : "Resend OTP"}
+                </button>
               </div>
 
               <button

@@ -1,7 +1,17 @@
 import crypto from "crypto";
 
-// In-memory OTP store (used for local dev / same-instance caching)
-export const otpStore = new Map<string, { otp: string; expiry: number }>();
+// Global OTP store attached to globalThis to persist across Next.js dev chunks and hot-reloads
+const globalForOtp = globalThis as unknown as {
+  __krishi_otp_store?: Map<string, { otp: string; expiry: number }>;
+};
+
+export const otpStore =
+  globalForOtp.__krishi_otp_store ||
+  new Map<string, { otp: string; expiry: number }>();
+
+if (!globalForOtp.__krishi_otp_store) {
+  globalForOtp.__krishi_otp_store = otpStore;
+}
 
 const SECRET = process.env.JWT_SECRET || "krishi-setu-sih2026-super-secret-jwt-key-change-in-prod";
 
