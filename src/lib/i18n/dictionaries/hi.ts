@@ -1,11 +1,11 @@
-﻿/**
+/**
  * KRISHI SETU — Hindi Dictionary (हिन्दी शब्दकोश)
  */
 export const hi = {
   // Brand & Header
   brand: "कृषि प्रवाह (KRISHI SETU)",
   tagline: "स्मार्ट एवं पारदर्शी कृषि खरीद प्रबंधन पोर्टल",
-  sihBadge: "स्मार्ट इंडिया हैकाथॉन 2026 • समस्या कोड: 26032",
+  sihBadge: "राष्ट्रीय कृषि रसद ग्रिड",
   
   // Navigation & Roles
   nav: {
@@ -14,7 +14,7 @@ export const hi = {
     operatorPortal: "मंडी संचालक पोर्टल",
     inspectorPortal: "गुणवत्ता परीक्षक पोर्टल",
     adminPortal: "प्रशासनिक विश्लेषण",
-    switchRole: "डेमो भूमिका बदलें",
+    switchRole: "टर्मिनल भूमिका बदलें",
     login: "लॉगिन करें",
     logout: "लॉगआउट",
     onboarding: "केवाईसी पंजीकरण",

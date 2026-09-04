@@ -15,9 +15,9 @@ export interface DemoUser {
   description: string;
 }
 
-// Demo accounts for SYSTEM ROLES only (Operator, Inspector, Admin)
-// These are pre-seeded in the DB for judges to quickly test different portals.
-// FARMER role has been removed — farmers must register with real OTP + KYC.
+// Pre-configured system role accounts for development and testing (Operator, Inspector, Admin)
+// These accounts are pre-seeded in the database to test station terminal portals.
+// FARMER role requires authentication via real OTP + verified KYC.
 export const DEMO_ACCOUNTS: Partial<Record<Role, DemoUser>> = {
   CENTRE_OPERATOR: {
     phone: "9876543220",

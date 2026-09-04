@@ -1,11 +1,11 @@
-﻿/**
+/**
  * KRISHI SETU — English Dictionary
  */
 export const en = {
   // Brand & Header
   brand: "KRISHI SETU",
   tagline: "Intelligent Agricultural Procurement Orchestration Platform",
-  sihBadge: "SIH 2026 • Problem ID: 26032",
+  sihBadge: "National Agricultural Logistics Grid",
   
   // Navigation & Roles
   nav: {
@@ -14,7 +14,7 @@ export const en = {
     operatorPortal: "Operator Portal",
     inspectorPortal: "Inspector Portal",
     adminPortal: "Admin Analytics",
-    switchRole: "Demo Role Switcher",
+    switchRole: "Terminal Role Switcher",
     login: "Login",
     logout: "Logout",
     onboarding: "KYC Onboarding",

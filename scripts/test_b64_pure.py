@@ -1,1 +1,0 @@
-print('This is 100% reliable and clean!')

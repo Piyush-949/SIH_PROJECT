@@ -162,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // API failed — fall through to local demo session
     }
 
-    // Fallback: create a local demo session (for judges when server isn't running)
+    // Fallback: create an offline session for local development
     const session: UserSession = {
       id: `usr_${targetRole.toLowerCase()}_demo`,
       phone: demo.phone,

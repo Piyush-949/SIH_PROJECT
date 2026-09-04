@@ -32,7 +32,7 @@ export function Footer() {
             </p>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 text-emerald-400 font-semibold text-[11px]">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>SIH 2026 • Problem ID: 26032</span>
+              <span>National Agricultural Logistics Grid</span>
             </div>
           </div>
 
@@ -77,7 +77,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-          <p>© 2026 KRISHI SETU • Built for Smart India Hackathon 2026 (Problem Statement 26032).</p>
+          <p>© 2026 KRISHI SETU • National Agricultural Procurement & Logistics Grid. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <Link href="/" className="hover:text-slate-300 transition">
               Home

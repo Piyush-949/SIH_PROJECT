@@ -248,10 +248,10 @@ export function StaffGate({
             </form>
           )}
 
-          {/* Quick Authorized Officer Key (For evaluation/demo) */}
+          {/* Station Supervisor Passkey */}
           <div className="pt-4 border-t border-slate-800 space-y-2">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
-              Quick Officer Access (Evaluation Pass)
+              Station Supervisor Access Key
             </p>
             <div className="grid grid-cols-1 gap-2">
               {allowedRoles.map((r) => (

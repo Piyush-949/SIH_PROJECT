@@ -286,10 +286,10 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* System Roles — Demo Quick Access for Judges */}
+        {/* Administrative & Staff Access */}
         <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4 space-y-3">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">
-            System Roles — Quick Demo Access
+            Administrative & Staff Role Switcher
           </p>
           <div className="grid grid-cols-2 gap-2">
             {(Object.entries(DEMO_ACCOUNTS) as [Role, (typeof DEMO_ACCOUNTS)[Role]][]).map(

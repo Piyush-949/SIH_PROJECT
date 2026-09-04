@@ -12,7 +12,7 @@ import { NotificationToast } from "@/components/layout/NotificationDrawer";
 export const metadata: Metadata = {
   title: "KRISHI SETU | Intelligent Agricultural Procurement Web Platform",
   description:
-    "Smart India Hackathon 2026 (Problem Statement ID: 26032) — Intelligent Agricultural Procurement Orchestration Web Platform with Zero Wait Times, Real-Time Queue & 9-Stage Transparency.",
+    "Intelligent Agricultural Procurement Orchestration Web Platform with Zero Wait Times, Real-Time Queue & 9-Stage Transparency.",
   icons: {
     icon: "/krishi-setu-logo.jpg",
     shortcut: "/krishi-setu-logo.jpg",

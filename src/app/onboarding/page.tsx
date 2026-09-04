@@ -320,7 +320,7 @@ export default function OnboardingPage() {
         <div className="text-center space-y-2 mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>SIH 2026 • Problem ID: 26032 Verified KYC Flow</span>
+            <span>National Agricultural Registry • Verified KYC Flow</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
             {t.kyc.title}

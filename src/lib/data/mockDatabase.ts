@@ -1,6 +1,6 @@
 /**
- * KRISHI SETU — High-Fidelity Mock & Seeded Client State Store
- * Provides 12 seeded centres, 4 crops, live bookings in all 9 stages, active incidents, and gov registry.
+ * KRISHI SETU — Offline Fallback & Seeded Client State Store
+ * Provides seeded procurement centres, crops, bookings across stages, active incidents, and gov registry.
  */
 
 export interface MockCentre {

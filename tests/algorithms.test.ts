@@ -1,6 +1,6 @@
-﻿/**
- * KRISHI SETU — Milestone 1 Foundation & Algorithm Test Suite
- * Validates processing time formulas, arrival windows, AI scoring, Agmarknet grading, discrepancy detection, and MSP calculations.
+/**
+ * KRISHI SETU — Core Algorithm Test Suite
+ * Validates processing time formulas, arrival windows, suitability scoring, Agmarknet grading, discrepancy detection, and MSP calculations.
  */
 
 import {
@@ -14,9 +14,9 @@ import {
   generatePfmsTransactionRef,
 } from "../src/lib/algorithms";
 
-function runM1Tests() {
+function runAlgorithmTests() {
   console.log("=================================================");
-  console.log("🧪 KRISHI SETU — MILESTONE 1 VERIFICATION TESTS");
+  console.log("🧪 KRISHI SETU — CORE ALGORITHM VERIFICATION TESTS");
   console.log("=================================================");
 
   let passed = 0;
@@ -221,4 +221,4 @@ function runM1Tests() {
   }
 }
 
-runM1Tests();
+runAlgorithmTests();
