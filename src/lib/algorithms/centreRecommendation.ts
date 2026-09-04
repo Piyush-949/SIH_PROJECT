@@ -1,6 +1,7 @@
-﻿/**
- * KRISHI SETU — 5+ Factor AI Centre Recommendation Engine
+/**
+ * KRISHI SETU — 6+ Factor AI Centre Recommendation Engine
  * Calculates normalized suitability score S in [0, 100] and generates natural language explanations.
+ * Factor 6: Real-time weather condition (via OpenWeatherMap)
  */
 
 export interface CentreScoringInput {
@@ -16,6 +17,9 @@ export interface CentreScoringInput {
   weighingMachinesActive: number;
   weighingMachinesTotal: number;
   status: "ACTIVE" | "CONGESTED" | "MAINTENANCE" | "INACTIVE";
+  // Factor 6: Weather (optional — degrades gracefully if not provided)
+  weatherAdvisoryLevel?: "none" | "caution" | "warning" | "severe";
+  weatherDescription?: string;
 }
 
 export interface RecommendationResult {
@@ -97,6 +101,15 @@ export function scoreProcurementCentre(input: CentreScoringInput): Recommendatio
   // Factor 5: Incident Frequency Penalty (weight: 10)
   const incidentPenalty = Math.min(input.activeIncidentsCount * 5, 10);
 
+  // Factor 6: Weather Penalty (weight: 0–15) — from OpenWeatherMap real data
+  const weatherPenaltyMap: Record<string, number> = {
+    severe: 15,
+    warning: 8,
+    caution: 4,
+    none: 0,
+  };
+  const weatherPenalty = weatherPenaltyMap[input.weatherAdvisoryLevel || "none"] ?? 0;
+
   // Bonus Factor: Processing Speed & Active Equipment Bonus (up to +10)
   const normSpeed = Math.min(input.processingSpeedPerHour / 150, 1.0);
   const equipmentRatio =
@@ -106,7 +119,10 @@ export function scoreProcurementCentre(input: CentreScoringInput): Recommendatio
   const speedBonus = normSpeed * 5 + equipmentRatio * 5;
 
   // Final score computation
-  let rawScore = 100 - (distancePenalty + queuePenalty + waitPenalty + loadPenalty + incidentPenalty) + speedBonus;
+  let rawScore =
+    100 -
+    (distancePenalty + queuePenalty + waitPenalty + loadPenalty + incidentPenalty + weatherPenalty) +
+    speedBonus;
   const score = Math.max(0, Math.min(100, Math.round(rawScore)));
 
   // Generate natural language explanation reasons
@@ -142,6 +158,21 @@ export function scoreProcurementCentre(input: CentreScoringInput): Recommendatio
 
   if (input.activeIncidentsCount > 0) {
     reasons.push(`${input.activeIncidentsCount} active operational incident(s) reported`);
+  }
+
+  // Factor 6: Weather advisory
+  if (input.weatherAdvisoryLevel && input.weatherAdvisoryLevel !== "none") {
+    const weatherEmoji: Record<string, string> = {
+      severe: "⛈️",
+      warning: "🌧️",
+      caution: "🌫️",
+    };
+    const emoji = weatherEmoji[input.weatherAdvisoryLevel] || "🌤️";
+    reasons.push(
+      `${emoji} Weather advisory: ${input.weatherDescription || input.weatherAdvisoryLevel} — factor in travel time`
+    );
+  } else if (input.weatherDescription) {
+    reasons.push(`🌤️ Weather: ${input.weatherDescription} — good conditions for transport`);
   }
 
   return {

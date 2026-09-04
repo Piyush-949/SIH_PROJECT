@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "@/lib/i18n";
@@ -367,7 +367,147 @@ export default function AdminDashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* ─── LIVE MARKET PRICE INTELLIGENCE (Agmarknet / data.gov.in) ─── */}
+      <MarketPriceIntelligence />
+
     </div>
     </StaffGate>
   );
 }
+
+// ─── Market Price Intelligence Component ──────────────────────────────────────
+interface MarketPriceCrop {
+  cropName: string;
+  cropHindi: string;
+  nationalAvgModal: number;
+  mspPerQuintal: number;
+  priceVsMsp: number;
+  topMarket: string;
+  source: string;
+}
+
+function MarketPriceIntelligence() {
+  const [prices, setPrices] = useState<MarketPriceCrop[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
+
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/market-prices");
+        if (!res.ok) throw new Error("Market price fetch failed");
+        const data = await res.json();
+        if (data.success && data.crops) {
+          setPrices(data.crops);
+          setLastUpdated(new Date(data.fetchedAt || Date.now()).toLocaleTimeString("en-IN"));
+        }
+      } catch (err) {
+        // Show fallback
+        setPrices([
+          { cropName: "Wheat", cropHindi: "गेहूँ", nationalAvgModal: 2480, mspPerQuintal: 2425, priceVsMsp: 2.3, topMarket: "Khanna, Punjab", source: "fallback" },
+          { cropName: "Paddy", cropHindi: "धान", nationalAvgModal: 2200, mspPerQuintal: 2300, priceVsMsp: -4.3, topMarket: "Warangal, Telangana", source: "fallback" },
+          { cropName: "Maize", cropHindi: "मक्का", nationalAvgModal: 2180, mspPerQuintal: 2225, priceVsMsp: -2.0, topMarket: "Gulbarga, Karnataka", source: "fallback" },
+          { cropName: "Soybean", cropHindi: "सोयाबीन", nationalAvgModal: 4750, mspPerQuintal: 4892, priceVsMsp: -2.9, topMarket: "Indore, M.P.", source: "fallback" },
+        ]);
+        setLastUpdated("offline");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPrices();
+  }, []);
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+            <TrendingUp className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-extrabold text-slate-900">Live Market Price Intelligence</h2>
+            <p className="text-[11px] text-slate-500">Agmarknet daily arrivals vs. CACP MSP 2025-26 · Source: data.gov.in</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {loading ? (
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          ) : (
+            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+          )}
+          <span className="text-[10px] text-slate-400 font-mono">
+            {loading ? "Fetching..." : `Updated ${lastUpdated}`}
+          </span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="p-8 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-2" />
+          <span className="text-sm text-slate-500">Fetching live mandi prices from Agmarknet...</span>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+                <th className="px-5 py-3 text-left font-bold">Commodity</th>
+                <th className="px-4 py-3 text-right font-bold">MSP 2025-26</th>
+                <th className="px-4 py-3 text-right font-bold">Mandi Avg</th>
+                <th className="px-4 py-3 text-right font-bold">vs. MSP</th>
+                <th className="px-4 py-3 text-left font-bold hidden sm:table-cell">Best Market</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {prices.map((crop) => {
+                const aboveMsp = crop.priceVsMsp >= 0;
+                const significant = Math.abs(crop.priceVsMsp) >= 3;
+                return (
+                  <tr key={crop.cropName} className="hover:bg-slate-50 transition">
+                    <td className="px-5 py-3">
+                      <div className="font-semibold text-slate-900">{crop.cropName}</div>
+                      <div className="text-[11px] text-slate-400">{crop.cropHindi}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-slate-700 font-semibold">
+                      ₹{crop.mspPerQuintal?.toLocaleString("en-IN")}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                      ₹{crop.nationalAvgModal?.toLocaleString("en-IN")}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                          aboveMsp
+                            ? "bg-emerald-100 text-emerald-700"
+                            : significant
+                            ? "bg-red-100 text-red-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {aboveMsp ? "↑" : "↓"} {Math.abs(crop.priceVsMsp)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      <span className="text-xs text-slate-600">{crop.topMarket}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="px-5 py-3 border-t border-slate-100 flex items-center gap-2">
+            <span className="text-[10px] text-slate-400">
+              Data: Agmarknet / data.gov.in · CACP MSP Rates 2025-26 · Kharif & Rabi seasons · Updated every 6 hours
+            </span>
+            {prices[0]?.source === "fallback" && (
+              <span className="text-[10px] text-amber-600 font-semibold">(offline fallback)</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

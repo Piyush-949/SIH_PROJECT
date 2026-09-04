@@ -78,6 +78,26 @@ export default function BookSlotPage() {
   // Large farmer threshold (>50 Quintals)
   const isLargeFarmer = quantity > 50;
 
+  // Weather state — fetched from OpenWeatherMap via /api/weather
+  const [weather, setWeather] = useState<{
+    description: string;
+    advisoryLevel: string;
+    advisoryText: string;
+    advisoryTextHindi: string;
+    temperature: number;
+    isRaining: boolean;
+    source: string;
+  } | null>(null);
+
+  // Gemini Live AI Advisory state
+  const [geminiAdvisory, setGeminiAdvisory] = useState<{
+    text: string;
+    hindi: string;
+    source: string;
+  } | null>(null);
+  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
+
+
   // Request GPS location from browser
   useEffect(() => {
     if (typeof window === "undefined" || !navigator.geolocation) {
@@ -126,6 +146,28 @@ export default function BookSlotPage() {
     };
     fetchCentres();
   }, [farmerLat, farmerLng]);
+
+  // Fetch real weather when GPS is available
+  useEffect(() => {
+    if (!farmerLat || !farmerLng) return;
+    const fetchWeather = async () => {
+      try {
+        const res = await fetch(
+          `/api/weather?lat=${farmerLat}&lng=${farmerLng}&city=Your+Location&district=Your+District`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.weather) {
+          setWeather(data.weather);
+        }
+      } catch {
+        // silently fail — weather is non-critical
+      }
+    };
+    fetchWeather();
+  }, [farmerLat, farmerLng]);
+
+
 
   // Fetch crops from API
   useEffect(() => {
@@ -185,6 +227,48 @@ export default function BookSlotPage() {
   const selectedCentreRecommendation = rankedCentres.find(
     (r) => r.centreId === selectedCentreId
   );
+
+  // Fetch Gemini AI recommendation advisory
+  useEffect(() => {
+    if (!selectedCentre) return;
+    const timer = setTimeout(async () => {
+      try {
+        setIsGeminiLoading(true);
+        const res = await fetch("/api/ai/recommend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "centre",
+            centreName: selectedCentre.name,
+            distanceKm: selectedCentre.distanceKm || 6.2,
+            waitMinutes: selectedCentreRecommendation?.loadPercentage ? Math.round(selectedCentreRecommendation.loadPercentage * 0.4) : 20,
+            loadPercentage: selectedCentreRecommendation?.loadPercentage || 40,
+            score: selectedCentreRecommendation?.score || 85,
+            weatherCondition: weather?.description || "Clear",
+            cropName: selectedCrop?.name || "Wheat",
+            farmerName: farmerProfile?.name || "Farmer",
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setGeminiAdvisory({
+              text: data.text,
+              hindi: data.hindi,
+              source: data.source || "gemini",
+            });
+          }
+        }
+      } catch {
+        // Handled silently
+      } finally {
+        setIsGeminiLoading(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [selectedCentre?.id, selectedCrop?.id, weather?.description]);
+
 
   // Time Slots
   const availableSlots = [
@@ -331,6 +415,49 @@ export default function BookSlotPage() {
           {t.booking.subtitle}
         </p>
       </div>
+
+      {/* ─── Real-Time Weather Advisory (OpenWeatherMap) ─── */}
+      {weather && (
+        <div
+          className={`rounded-2xl p-4 border flex items-start gap-3 ${
+            weather.advisoryLevel === "severe"
+              ? "bg-red-50 border-red-300"
+              : weather.advisoryLevel === "warning"
+              ? "bg-amber-50 border-amber-300"
+              : weather.advisoryLevel === "caution"
+              ? "bg-yellow-50 border-yellow-300"
+              : "bg-emerald-50 border-emerald-200"
+          }`}
+        >
+          <span className="text-2xl shrink-0" aria-hidden>
+            {weather.isRaining ? "🌧️" : weather.advisoryLevel === "caution" ? "🌫️" : "🌤️"}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-extrabold text-slate-900">
+                Weather Advisory — {weather.temperature}°C · {weather.description}
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  weather.advisoryLevel === "severe"
+                    ? "bg-red-200 text-red-800"
+                    : weather.advisoryLevel === "warning"
+                    ? "bg-amber-200 text-amber-800"
+                    : weather.advisoryLevel === "caution"
+                    ? "bg-yellow-200 text-yellow-800"
+                    : "bg-emerald-200 text-emerald-800"
+                }`}
+              >
+                {weather.advisoryLevel === "none" ? "CLEAR" : weather.advisoryLevel.toUpperCase()}
+              </span>
+            </div>
+            <p className="text-xs text-slate-700 mt-0.5">{isHindi ? weather.advisoryTextHindi : weather.advisoryText}</p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Source: OpenWeatherMap · {weather.source === "live" ? "Live" : "Estimated"} · Updates every 30 mins
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Form (7 Cols) */}
@@ -664,9 +791,37 @@ export default function BookSlotPage() {
                             </li>
                           ))}
                         </ul>
+
+                        {/* Live Gemini AI Advisory for selected centre */}
+                        {isSelected && (
+                          <div className="mt-2.5 p-2.5 rounded-lg bg-gradient-to-r from-blue-50/90 to-indigo-50/80 border border-blue-200/80 shadow-xs space-y-1">
+                            <div className="flex items-center gap-1.5 text-blue-900 font-bold text-[10px] uppercase tracking-wide">
+                              <Sparkles className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                              <span>Gemini AI Smart Advisor</span>
+                              {geminiAdvisory?.source === "gemini" && (
+                                <span className="ml-auto px-1.5 py-0.2 text-[9px] font-mono bg-blue-200/80 text-blue-800 rounded font-bold">
+                                  LIVE AI
+                                </span>
+                              )}
+                            </div>
+                            {isGeminiLoading ? (
+                              <div className="flex items-center gap-1.5 text-slate-500 py-0.5">
+                                <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                <span className="text-[10px]">Generating real-time AI advisory...</span>
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-slate-700 font-medium leading-relaxed">
+                                {isHindi
+                                  ? geminiAdvisory?.hindi || geminiAdvisory?.text || "आज यहाँ बुकिंग करना सबसे उपयुक्त रहेगा।"
+                                  : geminiAdvisory?.text || "Optimal capacity and minimum wait times detected for today."}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
+
                 })}
               </div>
             )}
