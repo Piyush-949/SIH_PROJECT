@@ -133,9 +133,23 @@ export async function POST(req: Request) {
     });
 
     const now = new Date();
-    const slotDate = slotTime ? new Date(slotTime) : new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const slotDateParam = body.slotDate || body.date || body.preferredVisitDate;
+    let slotDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+    if (slotDateParam && slotTime && !slotTime.includes("T")) {
+      // e.g. slotDateParam = "2026-09-08", slotTime = "09:30"
+      const parsed = new Date(`${slotDateParam}T${slotTime}:00`);
+      if (!isNaN(parsed.getTime())) slotDate = parsed;
+    } else if (slotTime && slotTime.includes("T")) {
+      const parsed = new Date(slotTime);
+      if (!isNaN(parsed.getTime())) slotDate = parsed;
+    } else if (slotDateParam) {
+      const parsed = new Date(`${slotDateParam}T09:00:00`);
+      if (!isNaN(parsed.getTime())) slotDate = parsed;
+    }
 
     const booking = await db.booking.create({
+
       data: {
         bookingNumber: bookingNo,
         farmerId: farmer.id,

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * KRISHI SETU — API Response Normalizers
  * Maps real Prisma DB response shapes → the flat MockBooking/MockCentre/MockIncident shapes
  * that existing UI components already expect. UI components need zero changes.
@@ -191,8 +191,12 @@ export function normalizeCentre(raw: any): MockCentre {
     status,
     waitingQueueCount,
     estimatedWaitMinutes: raw.estimatedWaitMinutes || Math.round(waitingQueueCount * 4) || 15,
+    distanceKm: raw.distanceKm !== undefined ? raw.distanceKm : null,
+    aiScore: raw.aiScore,
+    supportedCrops: raw.supportedCrops || ["Wheat", "Paddy", "Maize", "Soybean"],
   };
 }
+
 
 /**
  * Normalizes an array of raw centres. Falls back to SEEDED_CENTRES if result is empty.

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * KRISHI SETU — Processing Time & Dynamic Slot Arrival Window Engine
  * Formula: Estimated Processing Time = Base Time + Quantity Factor + Crop Complexity + Inspection Time + Vehicle Delta + Incident Penalty
  */
@@ -60,8 +60,12 @@ export function calculateProcessingTime(params: ProcessingTimeParams): Processin
       break;
   }
 
-  // Quantity handling: Q * CropFactor
-  const quantityHandlingMinutes = Math.round(params.quantityQuintals * cropFactor);
+  // Quantity handling: bulk commercial lots (>100Q) utilize high-throughput bulk hoppers
+  const quantityHandlingMinutes =
+    params.quantityQuintals > 100
+      ? Math.round(100 * cropFactor + (params.quantityQuintals - 100) * 0.15)
+      : Math.round(params.quantityQuintals * cropFactor);
+
 
   const totalEstimatedMinutes =
     baseEntryMinutes +

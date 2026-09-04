@@ -29,7 +29,9 @@ export interface RecommendationResult {
   loadPercentage: number;
   reasons: string[];
   primaryRecommendation: boolean;
+  distanceKm?: number;
 }
+
 
 /**
  * Calculates Haversine distance in km between two lat/lng coordinates.
@@ -182,8 +184,10 @@ export function scoreProcurementCentre(input: CentreScoringInput): Recommendatio
     loadPercentage,
     reasons,
     primaryRecommendation: false,
+    distanceKm: input.distanceKm,
   };
 }
+
 
 /**
  * Scores and ranks a list of centres, marking the highest scoring active centre.

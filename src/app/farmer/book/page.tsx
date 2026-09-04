@@ -11,8 +11,10 @@ import {
   calculateProcessingTime,
   calculateArrivalWindow,
   rankCentres,
+  calculateDistanceKm,
   CentreScoringInput,
 } from "@/lib/algorithms";
+
 
 const CentreMapLeaflet = dynamic(() => import("@/components/farmer/CentreMapLeaflet"), {
   ssr: false,
@@ -63,11 +65,64 @@ export default function BookSlotPage() {
   const [crops, setCrops] = useState<any[]>([]);
   const [centresLoading, setCentresLoading] = useState(true);
 
-  // GPS location
+  // GPS & Location State
   const [farmerLat, setFarmerLat] = useState<number | null>(null);
   const [farmerLng, setFarmerLng] = useState<number | null>(null);
+  const [farmerLocationName, setFarmerLocationName] = useState<string>("Locating via GPS...");
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Key agricultural hub presets for instant testing & fallback
+  const LOCATION_PRESETS = [
+    { label: "Karnal, Haryana", lat: 29.6857, lng: 76.9907 },
+    { label: "Ludhiana, Punjab", lat: 30.9010, lng: 75.8573 },
+    { label: "Khanna, Punjab", lat: 30.7067, lng: 76.2167 },
+    { label: "Indore, M.P.", lat: 22.7196, lng: 75.8577 },
+    { label: "Nashik, Maharashtra", lat: 19.9975, lng: 73.7898 },
+    { label: "Warangal, Telangana", lat: 17.9689, lng: 79.5941 },
+    { label: "Kota, Rajasthan", lat: 25.2138, lng: 75.8648 },
+    { label: "Meerut, U.P.", lat: 28.9845, lng: 77.7064 },
+    { label: "Delhi NCR", lat: 28.6139, lng: 77.2090 },
+  ];
+
+  // Request high-accuracy GPS from browser
+  const requestGpsLocation = () => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setLocationError("Geolocation not supported by your browser");
+      return;
+    }
+
+    setLocationLoading(true);
+    setLocationError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setFarmerLat(pos.coords.latitude);
+        setFarmerLng(pos.coords.longitude);
+        setFarmerLocationName("Your Real GPS Location");
+        setLocationLoading(false);
+      },
+      (err) => {
+        console.warn("[BookSlot] Geolocation error:", err.message);
+        setLocationError("GPS permission denied or timed out. You can choose your region below.");
+        // Default to first preset if no coordinates yet
+        if (!farmerLat) {
+          setFarmerLat(29.6857);
+          setFarmerLng(76.9907);
+          setFarmerLocationName("Karnal, Haryana (Default)");
+        }
+        setLocationLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
+
+  const handleSelectPreset = (preset: typeof LOCATION_PRESETS[0]) => {
+    setFarmerLat(preset.lat);
+    setFarmerLng(preset.lng);
+    setFarmerLocationName(preset.label);
+    setLocationError(null);
+  };
 
   // Booking state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -97,29 +152,26 @@ export default function BookSlotPage() {
   } | null>(null);
   const [isGeminiLoading, setIsGeminiLoading] = useState(false);
 
-
-  // Request GPS location from browser
-  useEffect(() => {
-    if (typeof window === "undefined" || !navigator.geolocation) {
-      setLocationError("Geolocation not supported by your browser");
-      return;
+  // 7-day date quick pills for procurement scheduling
+  const datePills = useMemo(() => {
+    const pills = [];
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split("T")[0];
+      const dayLabel = i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-IN", { weekday: "short" });
+      const formattedDate = d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+      pills.push({ dateStr, dayLabel, formattedDate });
     }
-
-    setLocationLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setFarmerLat(pos.coords.latitude);
-        setFarmerLng(pos.coords.longitude);
-        setLocationLoading(false);
-      },
-      (err) => {
-        console.warn("[BookSlot] Geolocation error:", err.message);
-        setLocationError("Location access denied. Showing all centres.");
-        setLocationLoading(false);
-      },
-      { timeout: 10000, maximumAge: 60000 }
-    );
+    return pills;
   }, []);
+
+  // Trigger GPS on initial mount
+  useEffect(() => {
+    requestGpsLocation();
+  }, []);
+
+
 
   // Fetch real centres from API (with GPS coordinates when available)
   useEffect(() => {
@@ -205,22 +257,44 @@ export default function BookSlotPage() {
 
   // AI-Scored Centre Rankings (real distance from GPS)
   const rankedCentres = useMemo(() => {
-    const inputs: CentreScoringInput[] = centres.map((c: any) => ({
-      centreId: c.id,
-      centreName: c.name,
-      distanceKm: c.distanceKm || 10,
-      waitingQueueCount: c.waitingQueueCount || c.activeQueueCount || 0,
-      estimatedWaitMinutes: c.estimatedWaitMinutes || 30,
-      currentLoadQuintals: c.currentLoadQuintals || 0,
-      capacityPerDayQuintals: c.capacityPerDayQuintals || 1000,
-      processingSpeedPerHour: c.processingSpeedPerHour || 100,
-      activeIncidentsCount: c.activeIncidentsCount || 0,
-      weighingMachinesActive: c.weighingMachinesActive || 2,
-      weighingMachinesTotal: c.weighingMachinesTotal || 2,
-      status: c.status,
-    }));
-    return rankCentres(inputs);
-  }, [centres]);
+    const inputs: CentreScoringInput[] = centres.map((c: any) => {
+      // Compute genuine Haversine distance from farmer's current location to centre
+      const distanceKm =
+        farmerLat && farmerLng && c.latitude && c.longitude
+          ? calculateDistanceKm(farmerLat, farmerLng, c.latitude, c.longitude)
+          : (c.distanceKm !== undefined && c.distanceKm !== null ? c.distanceKm : 15);
+
+      return {
+        centreId: c.id,
+        centreName: c.name,
+        distanceKm,
+        waitingQueueCount: c.waitingQueueCount || c.activeQueueCount || 0,
+        estimatedWaitMinutes: c.estimatedWaitMinutes || 30,
+        currentLoadQuintals: c.currentLoadQuintals || 0,
+        capacityPerDayQuintals: c.capacityPerDayQuintals || 1000,
+        processingSpeedPerHour: c.processingSpeedPerHour || 100,
+        activeIncidentsCount: c.activeIncidentsCount || 0,
+        weighingMachinesActive: c.weighingMachinesActive || 2,
+        weighingMachinesTotal: c.weighingMachinesTotal || 2,
+        status: c.status,
+        weatherAdvisoryLevel: weather?.advisoryLevel as any,
+        weatherDescription: weather?.description,
+      };
+
+    });
+
+    const ranked = rankCentres(inputs);
+
+    // If current selected centre is not valid or not set, auto-select the #1 closest/best centre
+    if (ranked.length > 0 && ranked[0].score > 0) {
+      if (!selectedCentreId || !centres.some((c) => c.id === selectedCentreId)) {
+        setSelectedCentreId(ranked[0].centreId);
+      }
+    }
+
+    return ranked;
+  }, [centres, farmerLat, farmerLng, weather?.advisoryLevel, weather?.description]);
+
 
   const selectedCentre = centres.find((c: any) => c.id === selectedCentreId) || centres[0];
 
@@ -494,30 +568,82 @@ export default function BookSlotPage() {
               </div>
             </div>
 
-            {/* Quantity Slider & Input */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  {t.booking.quantityLabel}
-                </label>
-                <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  {quantity} Quintals
-                </span>
+            {/* Quantity Slider & Direct Input (Expanded up to 2,000+ Quintals) */}
+            <div className="space-y-2.5">
+              <div className="flex justify-between items-center">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block">
+                    {t.booking.quantityLabel}
+                  </label>
+                  <span className="text-[10px] text-slate-400">
+                    Supports small farmers up to large commercial lots (2,000Q+)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      min={1}
+                      max={5000}
+                      step={1}
+                      value={quantity}
+                      onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 0))}
+                      className="w-24 px-2 py-1 text-sm font-mono font-bold text-emerald-800 bg-white border-2 border-emerald-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 text-right pr-6 shadow-xs"
+                    />
+                    <span className="absolute right-2 text-xs font-bold text-emerald-700 pointer-events-none">
+                      Q
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline">
+                    ({(quantity * 100).toLocaleString()} kg)
+                  </span>
+                </div>
               </div>
+
+              {/* Extended Range Slider */}
               <input
                 type="range"
                 min={5}
-                max={150}
+                max={2000}
                 step={5}
-                value={quantity}
+                value={Math.min(quantity, 2000)}
                 onChange={(e) => setQuantity(Number(e.target.value))}
                 className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
               />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+
+              <div className="flex justify-between text-[10px] text-slate-400 font-medium">
                 <span>Small (5Q)</span>
                 <span>Normal (40Q)</span>
                 <span className="text-amber-600 font-bold">PACS Farm Gate Cutoff (&gt;50Q)</span>
-                <span>Large (150Q)</span>
+                <span>Commercial (500Q)</span>
+                <span>Large Lot (2,000Q)</span>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] text-slate-500 font-semibold mr-1">Quick Select:</span>
+                {[
+                  { q: 20, label: "20 Q" },
+                  { q: 40, label: "40 Q (Standard)" },
+                  { q: 80, label: "80 Q (PACS)" },
+                  { q: 150, label: "150 Q" },
+                  { q: 300, label: "300 Q" },
+                  { q: 500, label: "500 Q" },
+                  { q: 1000, label: "1,000 Q (Bulk)" },
+                ].map((preset) => (
+                  <button
+                    key={preset.q}
+                    type="button"
+                    onClick={() => setQuantity(preset.q)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                      quantity === preset.q
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -532,7 +658,7 @@ export default function BookSlotPage() {
                   {t.booking.largeFarmerNotice}
                 </p>
                 <div className="text-[11px] font-semibold text-amber-700">
-                  ✓ Free on-farm quality assessment • ✓ Single multi-lot transport arrangement
+                  ✓ Free on-farm quality assessment • ✓ Single multi-lot transport arrangement • ✓ Dedicated procurement team
                 </div>
               </div>
             )}
@@ -566,12 +692,55 @@ export default function BookSlotPage() {
               </div>
             </div>
 
+            {/* ─── Procurement Date Picker (Farmer Chooses Arrival Date) ─── */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{isHindi ? "खरीद / आगमन तिथि चुनें" : "Select Procurement Date"}</span>
+                </label>
+                <input
+                  type="date"
+                  min={new Date().toISOString().split("T")[0]}
+                  max={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="text-xs font-mono font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-emerald-500 shadow-xs cursor-pointer"
+                />
+              </div>
+
+              {/* Quick 7-Day Date Pills */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {datePills.map((p) => {
+                  const isChosen = selectedDate === p.dateStr;
+                  return (
+                    <button
+                      key={p.dateStr}
+                      type="button"
+                      onClick={() => setSelectedDate(p.dateStr)}
+                      className={`p-2 rounded-xl border text-left transition flex flex-col ${
+                        isChosen
+                          ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-bold ring-1 ring-emerald-500 shadow-xs"
+                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold">
+                        {p.dayLabel}
+                      </span>
+                      <span className="text-xs font-bold mt-0.5">{p.formattedDate}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Time Slot Picker */}
             {!isLargeFarmer && (
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">
                   {t.booking.selectSlot}
                 </label>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {availableSlots.map((slot) => (
                     <button
@@ -707,18 +876,91 @@ export default function BookSlotPage() {
                 {t.booking.aiRecommendation}
               </h3>
               <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                {centresLoading ? "Loading..." : "5+ Factor Model"}
+                {centresLoading ? "Loading..." : "6-Factor AI Model (Weather & Proximity)"}
               </span>
             </div>
 
+            {/* ─── Real GPS Location Bar & Region Selector ─── */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping shrink-0" />
+                  <span className="font-bold text-slate-900 truncate">
+                    📍 {farmerLocationName || "Detecting Location..."}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={requestGpsLocation}
+                  disabled={locationLoading}
+                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-xs shrink-0 disabled:opacity-60"
+                  title="Detect exact coordinates using device GPS"
+                >
+                  {locationLoading ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Detecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🎯 Auto-Detect GPS</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {farmerLat && farmerLng && (
+                <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between">
+                  <span>
+                    GPS: {farmerLat.toFixed(4)}°N, {farmerLng.toFixed(4)}°E
+                  </span>
+                  <span className="text-emerald-700 font-bold">
+                    ✓ Real distance calculation active
+                  </span>
+                </div>
+              )}
+
+              {locationError && (
+                <div className="text-[10px] text-amber-700 font-medium">
+                  {locationError}
+                </div>
+              )}
+
+              {/* Quick Region Selector Chips */}
+              <div className="flex items-center gap-1 flex-wrap pt-1 border-t border-slate-200/70">
+                <span className="text-[10px] text-slate-500 font-semibold mr-0.5">
+                  Select Hub:
+                </span>
+                {LOCATION_PRESETS.map((p) => {
+                  const isCurrent = farmerLocationName === p.label;
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => handleSelectPreset(p)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                        isCurrent
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      {p.label.split(",")[0]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Interactive OpenStreetMap / Leaflet Map */}
-            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-xs h-64 relative">
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-xs h-72 relative">
               <CentreMapLeaflet
                 centres={centres}
                 selectedCentreId={selectedCentreId}
                 onCentreSelect={(id) => setSelectedCentreId(id)}
                 farmerLat={farmerLat}
                 farmerLng={farmerLng}
+                farmerLocationName={farmerLocationName}
+                onDetectLocation={requestGpsLocation}
               />
             </div>
 
@@ -730,10 +972,17 @@ export default function BookSlotPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {rankedCentres.slice(0, 3).map((rec, idx) => {
+                {rankedCentres.slice(0, 4).map((rec, idx) => {
                   const centre = centres.find((c) => c.id === rec.centreId)!;
                   if (!centre) return null;
                   const isSelected = selectedCentreId === centre.id;
+                  const distText =
+                    rec.distanceKm !== undefined && rec.distanceKm !== null
+                      ? `${rec.distanceKm} km away`
+                      : centre.distanceKm !== null && centre.distanceKm !== undefined
+                      ? `${centre.distanceKm} km away`
+                      : "Distance calculating...";
+
                   return (
                     <div
                       key={centre.id}
@@ -746,7 +995,7 @@ export default function BookSlotPage() {
                     >
                       {idx === 0 && (
                         <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold shadow-xs">
-                          ★ TOP AI CHOICE
+                          ★ TOP AI CHOICE (Nearest Centre)
                         </span>
                       )}
 
@@ -756,8 +1005,12 @@ export default function BookSlotPage() {
                             {centre.name}
                           </h4>
                           <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3 text-emerald-600" />
-                            {centre.district}, {centre.state} • {idx === 0 ? "6.2" : "12.5"} km
+                            <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span>{centre.district}, {centre.state}</span>
+                            <span>•</span>
+                            <span className="font-bold text-blue-700 bg-blue-50 px-1 rounded">
+                              {distText}
+                            </span>
                           </span>
                         </div>
                         <div className="text-right">
@@ -778,7 +1031,9 @@ export default function BookSlotPage() {
                         </div>
                       </div>
 
+
                       {/* "Why we recommend this" Natural Language Explainability */}
+
                       <div className="mt-2 pt-2 border-t border-slate-200/70 text-[11px] space-y-1">
                         <span className="font-bold text-slate-700 block">
                           {t.booking.whyRecommend}:
@@ -865,10 +1120,21 @@ export default function BookSlotPage() {
               </div>
             </div>
 
-            <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-700 space-y-1 text-left border">
+            <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-700 space-y-1.5 text-left border">
               <div className="flex justify-between">
                 <span className="text-slate-500">Procurement Centre:</span>
-                <span className="font-bold">{confirmedBookingData.centreName}</span>
+                <span className="font-bold text-slate-800">{confirmedBookingData.centreName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Procurement Date:</span>
+                <span className="font-bold text-emerald-700">
+                  {new Date(selectedDate).toLocaleDateString("en-IN", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Produce & Quantity:</span>
@@ -879,6 +1145,7 @@ export default function BookSlotPage() {
                 <span className="font-mono font-bold text-emerald-700">{confirmedBookingData.arrivalWindow}</span>
               </div>
             </div>
+
 
             <div className="flex gap-2">
               <button
