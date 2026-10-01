@@ -8,11 +8,11 @@
 
 <br/>
 
-[![Next.js](https://img.shields.io/badge/Next.js-14.2.5-black.svg?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-14.2.5-black.svg?style=for-the-badge&logo=nextdotjs)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC.svg?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC.svg?style=for-the-badge&logo=tailwindcss)](https://tailwindcss.com/)
 [![Prisma](https://img.shields.io/badge/Prisma-5.18-2D3748.svg?style=for-the-badge&logo=prisma)](https://www.prisma.io/)
-[![Socket.IO](https://img.shields.io/badge/Socket.IO-4.7-010101.svg?style=for-the-badge&logo=socket.io)](https://socket.io/)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-4.7-010101.svg?style=for-the-badge&logo=socketdotio)](https://socket.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 <img src="https://img.shields.io/github/stars/Piyush-949/SIH_PROJECT?style=social" />
