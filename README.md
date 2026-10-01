@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a4314,50:2d6a2e,100:8bc34a&height=200&section=header&text=Krishi%20Setu&fontSize=60&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=कृषि%20सेतु%20—%20Intelligent%20Agri%20Procurement%20%26%20Logistics&descAlignY=58&descSize=18" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a4314,50:2d6a2e,100:8bc34a&height=200&section=header&text=Krishi%20Setu&fontSize=60&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=%E0%A4%95%E0%A5%83%E0%A4%B7%E0%A4%BF%20%E0%A4%B8%E0%A5%87%E0%A4%A4%E0%A5%81%20%E2%80%94%20Intelligent%20Agri%20Procurement%20%26%20Logistics&descAlignY=58&descSize=18" width="100%"/>
 
 <a href="https://github.com/Piyush-949/SIH_PROJECT">
   <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=22&pause=1200&color=4CAF50&center=true&vCenter=true&width=700&lines=Ending+multi-day+truck+queues+at+the+mandi+gate;Transparent+MSP+payments%2C+not+promises;AI+grain+grading+before+you+even+leave+the+farm;Built+for+Smart+India+Hackathon+2026" alt="Typing SVG" />
