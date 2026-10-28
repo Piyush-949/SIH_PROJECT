@@ -1,0 +1,320 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+model User {
+  id                String                 @id @default(cuid())
+  phone             String                 @unique
+  name              String
+  role              String                 @default("FARMER")
+  language          String                 @default("en")
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  farmerProfile     FarmerProfile?
+  operatorCentres   ProcurementCentre[]    @relation("CentreOperators")
+  inspections       QualityInspection[]
+  procurements      ProcurementRecord[]
+  incidentsReported OperationalIncident[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+}
+
+model FarmerProfile {
+  id                String                @id @default(cuid())
+  userId            String                @unique
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aadhaarNumber     String                // Stored masked e.g. "XXXX-XXXX-1234"
+  kisanId           String                @unique // e.g. "KID-HR-2024-8891"
+  village           String
+  district          String
+  state             String
+  pincode           String
+  bankAccountNumber String
+  ifscCode          String
+  bankName          String
+  landAreaAcres     Float                 @default(5.0)
+  kycStatus         String                @default("PENDING")
+  kycVerifiedAt     DateTime?
+  bookings          Booking[]
+  payments          Payment[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+}
+
+model GovRegistry {
+  id                  String   @id @default(cuid())
+  aadhaarNumber       String   @unique
+  kisanId             String   @unique
+  farmerName          String
+  state               String
+  district            String
+  village             String   @default("Rampur")
+  pincode             String   @default("132001")
+  registeredLandAcres Float
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+}
+
+model ProcurementCentre {
+  id                     String                @id @default(cuid())
+  name                   String
+  code                   String                @unique // e.g. "PC-HR-001"
+  latitude               Float
+  longitude              Float
+  address                String
+  district               String
+  state                  String
+  pincode                String                @default("132001")
+  contactPhone           String                @default("+91-184-2250100")
+  capacityPerDayQuintals Float                 @default(1000.0)
+  currentLoadQuintals    Float                 @default(0.0)
+  processingSpeedPerHour Float                 @default(100.0)
+  operatingHours         String                @default("08:00 AM - 06:00 PM")
+  activeCounters         Int                   @default(3)
+  weighingMachinesTotal  Int                   @default(2)
+  weighingMachinesActive Int                   @default(2)
+  moistureMetersTotal    Int                   @default(2)
+  moistureMetersActive   Int                   @default(2)
+  status                 String                @default("ACTIVE")
+  operators              User[]                @relation("CentreOperators")
+  cropsSupported         CentreCrop[]
+  slots                  Slot[]
+  bookings               Booking[]
+  queueEntries           QueueEntry[]
+  incidents              OperationalIncident[]
+  procurementRecords     ProcurementRecord[]
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+}
+
+model Crop {
+  id                              String       @id @default(cuid())
+  name                            String       @unique
+  nameHindi                       String
+  category                        String       // "Cereals", "Oilseeds", "Pulses"
+  basePricePerQuintal             Float        // MSP Rate in INR
+  moistureStandardMax             Float        @default(12.0)
+  foreignMaterialMax              Float        @default(2.0)
+  damagedGrainMax                 Float        @default(3.0)
+  baseProcessingMinutesPerQuintal Float        @default(0.8)
+  centreCrops                     CentreCrop[]
+  bookings                        Booking[]
+  createdAt                       DateTime     @default(now())
+}
+
+model CentreCrop {
+  id                    String            @id @default(cuid())
+  centreId              String
+  cropId                String
+  centre                ProcurementCentre @relation(fields: [centreId], references: [id], onDelete: Cascade)
+  crop                  Crop              @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  dailyQuotaQuintals    Float             @default(500.0)
+  procuredTodayQuintals Float             @default(0.0)
+  available             Boolean           @default(true)
+
+  @@unique([centreId, cropId])
+}
+
+model Slot {
+  id                     String            @id @default(cuid())
+  centreId               String
+  centre                 ProcurementCentre @relation(fields: [centreId], references: [id], onDelete: Cascade)
+  date                   String            // YYYY-MM-DD
+  startTime              String            // HH:mm
+  endTime                String            // HH:mm
+  maxCapacityQuintals    Float
+  bookedCapacityQuintals Float             @default(0.0)
+  status                 String            @default("AVAILABLE") // AVAILABLE, FULL, BLOCKED
+  bookings               Booking[]
+  createdAt              DateTime          @default(now())
+
+  @@index([centreId, date])
+}
+
+model Booking {
+  id                             String                @id @default(cuid())
+  bookingNumber                  String                @unique // e.g. "KF-2026-0042"
+  farmerId                       String
+  farmer                         FarmerProfile         @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  centreId                       String
+  centre                         ProcurementCentre     @relation(fields: [centreId], references: [id])
+  cropId                         String
+  crop                           Crop                  @relation(fields: [cropId], references: [id])
+  slotId                         String?
+  slot                           Slot?                 @relation(fields: [slotId], references: [id])
+  estimatedQuantityQuintals      Float
+  actualQuantityQuintals         Float?
+  vehicleType                    String                @default("TRACTOR_TROLLEY")
+  transportType                  String                @default("SELF_TRANSPORT")
+  status                         String                @default("CONFIRMED")
+  currentStage                   String                @default("SLOT_BOOKED")
+  qrToken                        String                @unique // Encoded token payload
+  arrivalWindowStart             DateTime
+  arrivalWindowEnd               DateTime
+  estimatedProcessingTimeMinutes Int                   @default(30)
+  originalEstimatedArrival       DateTime
+  dynamicEstimatedArrival        DateTime
+  teamVisitScheduledAt           DateTime?
+  teamVisitNotes                 String?
+  queueEntry                     QueueEntry?
+  procurementRecord              ProcurementRecord?
+  qualityInspection              QualityInspection?
+  payment                        Payment?
+  boostRequests                  PaymentBoostRequest[]
+  createdAt                      DateTime              @default(now())
+  updatedAt                      DateTime              @updatedAt
+
+  @@index([farmerId])
+  @@index([centreId, status])
+}
+
+model QueueEntry {
+  id            String            @id @default(cuid())
+  bookingId     String            @unique
+  booking       Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  centreId      String
+  centre        ProcurementCentre @relation(fields: [centreId], references: [id])
+  tokenNumber   String            // e.g. "TK-104"
+  queuePosition Int
+  priorityScore Float             @default(1.0)
+  status        String            @default("WAITING")
+  currentStage  String            @default("CHECKED_IN")
+  etaMinutes    Int               @default(0)
+  checkInTime   DateTime          @default(now())
+  calledTime    DateTime?
+  completedTime DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([centreId, status])
+}
+
+model ProcurementRecord {
+  id                          String            @id @default(cuid())
+  bookingId                   String            @unique
+  booking                     Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  centreId                    String
+  centre                      ProcurementCentre @relation(fields: [centreId], references: [id])
+  operatorId                  String
+  operator                    User              @relation(fields: [operatorId], references: [id])
+  grossWeightQuintals         Float
+  tareWeightQuintals          Float
+  netWeightQuintals           Float
+  weightDiscrepancyPercentage Float             @default(0.0)
+  discrepancyFlagged          Boolean           @default(false)
+  discrepancyResolved         Boolean           @default(false)
+  discrepancyNotes            String?
+  weighedAt                   DateTime          @default(now())
+}
+
+model QualityInspection {
+  id                        String             @id @default(cuid())
+  bookingId                 String             @unique
+  booking                   Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  inspectorId               String
+  inspector                 User               @relation(fields: [inspectorId], references: [id])
+  moisturePercentage        Float
+  foreignMaterialPercentage Float
+  damagedGrainPercentage    Float
+  assignedGrade             String             @default("GRADE_A")
+  decision                  String             @default("ACCEPT")
+  acceptedQuantityQuintals  Float
+  rejectedQuantityQuintals  Float              @default(0.0)
+  deductionPercentage       Float              @default(0.0)
+  remarks                   String?
+  inspectedAt               DateTime           @default(now())
+}
+
+model Payment {
+  id                   String                @id @default(cuid())
+  bookingId            String                @unique
+  booking              Booking               @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  farmerId             String
+  farmer               FarmerProfile         @relation(fields: [farmerId], references: [id])
+  grossAmount          Float
+  deductionAmount      Float                 @default(0.0)
+  netPayableAmount     Float
+  mspRateApplied       Float
+  paymentStatus        String                @default("NOT_INITIATED")
+  transactionReference String?
+  paymentGateway       String                @default("PFMS_DIRECT_DBT")
+  initiatedAt          DateTime?
+  completedAt          DateTime?
+  boostRequested       Boolean               @default(false)
+  boostRequestedAt     DateTime?
+  boostReason          String?
+  boostStatus          String                @default("NONE")
+  boostRequests        PaymentBoostRequest[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([farmerId, paymentStatus])
+}
+
+model PaymentBoostRequest {
+  id                 String      @id @default(cuid())
+  paymentId          String
+  payment            Payment     @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  bookingId          String
+  booking            Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  farmerId           String
+  reason             String
+  status             String      @default("PENDING")
+  requestedAt        DateTime    @default(now())
+  reviewedAt         DateTime?
+  reviewerId         String?
+  resolutionNotes    String?
+  newEstimatedPayout DateTime?
+}
+
+model OperationalIncident {
+  id                          String            @id @default(cuid())
+  centreId                    String
+  centre                      ProcurementCentre @relation(fields: [centreId], references: [id])
+  reporterId                  String
+  reporter                    User              @relation(fields: [reporterId], references: [id])
+  incidentType                String
+  severity                    String            @default("MEDIUM")
+  description                 String
+  impactDelayMinutesPerSlot   Int               @default(15)
+  capacityReductionPercentage Float             @default(25.0)
+  status                      String            @default("ACTIVE") // ACTIVE, RESOLVED
+  reportedAt                  DateTime          @default(now())
+  resolvedAt                  DateTime?
+
+  @@index([centreId, status])
+}
+
+model Notification {
+  id           String               @id @default(cuid())
+  userId       String
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  titleHindi   String
+  message      String
+  messageHindi String
+  category     String               @default("GENERAL")
+  read         Boolean              @default(false)
+  metadata     String?              // JSON metadata e.g. { "bookingId": "...", "link": "/queue" }
+  createdAt    DateTime             @default(now())
+
+  @@index([userId, read])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // e.g. "CHECK_IN", "WEIGH_RECORDED", "INCIDENT_REPORTED"
+  entityType String   // e.g. "Booking", "Payment", "Incident"
+  entityId   String
+  details    String?  // JSON string
+  ipAddress  String?
+  timestamp  DateTime @default(now())
+}
